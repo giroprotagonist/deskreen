@@ -63,6 +63,9 @@ function MainView() {
 			enabled: false,
 			screenShare: true,
 		});
+	const [remoteInputFeedback, setRemoteInputFeedback] = useState<string | null>(
+		null,
+	);
 
 	useEffect(() => {
 		const { pathname } = window.location;
@@ -96,6 +99,7 @@ function MainView() {
 			setPromptStep,
 			setScreenSharingSourceType,
 			setRemoteControlCapability,
+			setRemoteInputFeedback,
 			setDialogErrorMessage,
 			setIsErrorDialogOpen,
 			setUrl,
@@ -147,6 +151,7 @@ function MainView() {
 				streamUrl={url}
 				screenSharingSourceType={screenSharingSourceType}
 				remoteControlCapability={remoteControlCapability}
+				remoteInputFeedback={remoteInputFeedback}
 				onSendRemoteInput={(payload) => peer?.sendRemoteInput(payload)}
 				setIsWithControls={setIsWithControls}
 				isWithControls={isWithControls}

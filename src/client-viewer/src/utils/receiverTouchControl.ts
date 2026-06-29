@@ -54,8 +54,15 @@ export function attachReceiverTouchControl(
 		});
 	};
 
+	let lastTapAt = 0;
+
 	const handleTap = (clientX: number, clientY: number) => {
 		if (!active) return;
+		const now = Date.now();
+		if (now - lastTapAt < 250) {
+			return;
+		}
+		lastTapAt = now;
 		addRipple(clientX, clientY);
 		sendAtPoint(clientX, clientY, 'click');
 	};
@@ -125,13 +132,23 @@ export function attachReceiverTouchControl(
 		handleTap(touch.clientX, touch.clientY);
 	};
 
+	const onPointerUp = (event: PointerEvent) => {
+		if (!active || event.pointerType === 'mouse') {
+			return;
+		}
+		event.preventDefault();
+		handleTap(event.clientX, event.clientY);
+	};
+
 	overlay.addEventListener('click', onClick);
+	overlay.addEventListener('pointerup', onPointerUp);
 	overlay.addEventListener('touchstart', onTouchStart, { passive: true });
 	overlay.addEventListener('touchmove', onTouchMove, { passive: false });
 	overlay.addEventListener('touchend', onTouchEnd, { passive: false });
 
 	return () => {
 		overlay.removeEventListener('click', onClick);
+		overlay.removeEventListener('pointerup', onPointerUp);
 		overlay.removeEventListener('touchstart', onTouchStart);
 		overlay.removeEventListener('touchmove', onTouchMove);
 		overlay.removeEventListener('touchend', onTouchEnd);

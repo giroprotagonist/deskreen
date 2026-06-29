@@ -4,6 +4,13 @@ import VideoAutoQualityOptimizer from '../../features/VideoAutoQualityOptimizer'
 import changeLanguage from './changeLanguage';
 import ConnectionIcon from './ConnectionIconEnum';
 
+const REMOTE_INPUT_FAILURE_MESSAGES: Record<string, string> = {
+	accessibility:
+		'Mac Accessibility permission required — enable Deskreen CE in System Settings → Privacy & Security → Accessibility.',
+	screenShare: 'Share a full screen on the Mac (not a single window) to use control.',
+	disabled: 'Enable "Allow tablet control while casting" in Deskreen CE settings on the Mac.',
+};
+
 export default (params: CreatePeerConnectionUseEffectParams) => {
 	const {
 		peer,
@@ -14,6 +21,7 @@ export default (params: CreatePeerConnectionUseEffectParams) => {
 		setPromptStep,
 		setScreenSharingSourceType,
 		setRemoteControlCapability,
+		setRemoteInputFeedback,
 		setDialogErrorMessage,
 		setIsErrorDialogOpen,
 		setUrl,
@@ -45,6 +53,16 @@ export default (params: CreatePeerConnectionUseEffectParams) => {
 				},
 				setScreenSharingSourceType,
 				setRemoteControlCapability,
+				(result) => {
+					if (result.ok) {
+						setRemoteInputFeedback(null);
+						return;
+					}
+					const message =
+						REMOTE_INPUT_FAILURE_MESSAGES[result.reason ?? ''] ??
+						`Control failed: ${result.reason ?? 'unknown error'}`;
+					setRemoteInputFeedback(message);
+				},
 				changeLanguage,
 				setDialogErrorMessage,
 				setIsErrorDialogOpen,

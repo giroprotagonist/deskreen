@@ -50,22 +50,33 @@ async function handleRemoteInput(
 		return;
 	}
 
-	if (!peerConnection.displayID) {
-		return;
-	}
-
-	const injected = await window.electron.ipcRenderer.invoke(
+	const result = await window.electron.ipcRenderer.invoke(
 		IpcEvents.InjectRemoteInput,
 		{
 			displayID: peerConnection.displayID,
+			desktopCapturerSourceID: peerConnection.desktopCapturerSourceID,
 			sourceDisplaySize: peerConnection.sourceDisplaySize,
 			payload,
 		},
 	);
 
+	const injected = Boolean(result?.ok ?? result);
+
 	if (injected && !remoteControlSessionNotified) {
 		remoteControlSessionNotified = true;
 		window.electron.ipcRenderer.send(IpcEvents.RemoteControlSessionActive, true);
+	}
+
+	if (!injected && peerConnection.peer) {
+		peerConnection.peer.send(
+			JSON.stringify({
+				type: 'remote_input_result',
+				payload: {
+					ok: false,
+					reason: result?.reason ?? 'unknown',
+				},
+			}),
+		);
 	}
 }
 

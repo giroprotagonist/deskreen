@@ -61,6 +61,7 @@ interface PlayerControlPanelProps {
 	showControlModeToggle?: boolean;
 	isControlModeEnabled?: boolean;
 	controlModeAvailable?: boolean;
+	hostAllowsRemoteControl?: boolean;
 	onControlModeToggle?: (enabled: boolean) => void;
 	// toaster: undefined | HTMLDivElement;
 }
@@ -85,6 +86,7 @@ function PlayerControlPanel(props: PlayerControlPanelProps) {
 		showControlModeToggle = false,
 		isControlModeEnabled = false,
 		controlModeAvailable = false,
+		hostAllowsRemoteControl = false,
 		onControlModeToggle,
 	} = props;
 
@@ -351,13 +353,17 @@ function PlayerControlPanel(props: PlayerControlPanelProps) {
 								{showControlModeToggle && (
 									<Tooltip
 										content={
-											controlModeAvailable
+											!hostAllowsRemoteControl
 												? t(
-														'Tap the stream to click on your Mac. Two-finger swipe to scroll.',
+														'Enable "Allow tablet control while casting" in Deskreen CE settings on the Mac.',
 													)
-												: t(
-														'Control works when sharing a full screen and the Mac host allows tablet control.',
-													)
+												: !controlModeAvailable
+													? t(
+															'Control works when sharing a full screen and the Mac host allows tablet control.',
+														)
+													: t(
+															'Tap the stream to click on your Mac. Two-finger swipe to scroll.',
+														)
 										}
 										position={Position.LEFT}
 									>

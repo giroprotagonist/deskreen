@@ -46,6 +46,7 @@ interface PlayerViewProps {
 	screenSharingSourceType: ScreenSharingSourceType;
 	streamUrl: MediaStream | null;
 	remoteControlCapability: RemoteControlCapabilityPayload;
+	remoteInputFeedback?: string | null;
 	onSendRemoteInput?: (payload: RemoteInputPayload) => void;
 }
 
@@ -69,6 +70,7 @@ function PlayerView(props: PlayerViewProps) {
 		videoQuality,
 		streamUrl,
 		remoteControlCapability,
+		remoteInputFeedback,
 		onSendRemoteInput,
 	} = props;
 
@@ -108,7 +110,7 @@ function PlayerView(props: PlayerViewProps) {
 		remoteControlCapability.enabled &&
 		remoteControlCapability.screenShare &&
 		screenSharingSourceType === ScreenSharingSource.SCREEN;
-	const showControlModeToggle = receiverMode && remoteControlCapability.enabled;
+	const showControlModeToggle = receiverMode;
 
 	useEffect(() => {
 		if (!monoAudioControllerRef.current) {
@@ -375,6 +377,17 @@ function PlayerView(props: PlayerViewProps) {
 		initToaster();
 	}, []);
 
+	useEffect(() => {
+		if (!remoteInputFeedback || !toasterRef.current) {
+			return;
+		}
+		toasterRef.current.show({
+			message: remoteInputFeedback,
+			intent: 'warning',
+			timeout: 6000,
+		});
+	}, [remoteInputFeedback]);
+
 	// wrap handlePlayPause to show toaster notifications
 	const handlePlayPauseWithNotification = useCallback(() => {
 		const nextPlaying = !isPlaying;
@@ -513,6 +526,7 @@ function PlayerView(props: PlayerViewProps) {
 				showControlModeToggle={showControlModeToggle}
 				isControlModeEnabled={isControlModeEnabled}
 				controlModeAvailable={controlAvailable}
+				hostAllowsRemoteControl={remoteControlCapability.enabled}
 				onControlModeToggle={handleControlModeToggle}
 				handleClickFullscreen={async () => {
 					const result = await togglePlayerFullscreen();

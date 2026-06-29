@@ -13,16 +13,23 @@ export default function mapVideoTouchToSourceCoords(
 	clientY: number,
 ): NormalizedSourceCoords | null {
 	const rect = video.getBoundingClientRect();
-	const videoWidth = video.videoWidth;
-	const videoHeight = video.videoHeight;
-
-	if (
-		rect.width <= 0 ||
-		rect.height <= 0 ||
-		videoWidth <= 0 ||
-		videoHeight <= 0
-	) {
+	if (rect.width <= 0 || rect.height <= 0) {
 		return null;
+	}
+
+	const localX = clientX - rect.left;
+	const localY = clientY - rect.top;
+
+	let videoWidth = video.videoWidth;
+	let videoHeight = video.videoHeight;
+
+	// WebView/Android may not expose intrinsic dimensions immediately — fall back
+	// to the visible element box so taps still register.
+	if (videoWidth <= 0 || videoHeight <= 0) {
+		return {
+			x: Math.min(1, Math.max(0, localX / rect.width)),
+			y: Math.min(1, Math.max(0, localY / rect.height)),
+		};
 	}
 
 	const elementAspect = rect.width / rect.height;
@@ -41,20 +48,20 @@ export default function mapVideoTouchToSourceCoords(
 		offsetX = (rect.width - contentWidth) / 2;
 	}
 
-	const localX = clientX - rect.left - offsetX;
-	const localY = clientY - rect.top - offsetY;
+	const contentLocalX = localX - offsetX;
+	const contentLocalY = localY - offsetY;
 
 	if (
-		localX < 0 ||
-		localY < 0 ||
-		localX > contentWidth ||
-		localY > contentHeight
+		contentLocalX < 0 ||
+		contentLocalY < 0 ||
+		contentLocalX > contentWidth ||
+		contentLocalY > contentHeight
 	) {
 		return null;
 	}
 
 	return {
-		x: localX / contentWidth,
-		y: localY / contentHeight,
+		x: contentLocalX / contentWidth,
+		y: contentLocalY / contentHeight,
 	};
 }

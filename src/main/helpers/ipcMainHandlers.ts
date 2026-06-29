@@ -582,6 +582,7 @@ export const initIpcMainHandlers = (mainWindow: BrowserWindow): void => {
 			_,
 			args: {
 				displayID: string;
+				desktopCapturerSourceID?: string;
 				sourceDisplaySize?: { width: number; height: number };
 				payload: RemoteInputPayload;
 			},
@@ -590,10 +591,11 @@ export const initIpcMainHandlers = (mainWindow: BrowserWindow): void => {
 				!store.has(ElectronStoreKeys.AllowTabletControlWhileCasting) ||
 				store.get(ElectronStoreKeys.AllowTabletControlWhileCasting) !== 'true'
 			) {
-				return false;
+				return { ok: false, reason: 'disabled' };
 			}
 			return injectRemoteInputOnMac(
 				args.displayID,
+				args.desktopCapturerSourceID ?? '',
 				args.sourceDisplaySize,
 				args.payload,
 			);

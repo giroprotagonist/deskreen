@@ -20,6 +20,7 @@ type CreatePeerConnectionUseEffectParams = {
 		enabled: boolean;
 		screenShare: boolean;
 	}) => void;
+	setRemoteInputFeedback: (_: string | null) => void;
 	setDialogErrorMessage: (_: ErrorMessage) => void;
 	setIsErrorDialogOpen: (_: boolean) => void;
 	setUrl: (_: MediaStream | null) => void;

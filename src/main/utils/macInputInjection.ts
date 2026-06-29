@@ -1,9 +1,16 @@
 import { spawnSync } from 'node:child_process';
 import { screen, systemPreferences } from 'electron';
 import type { RemoteInputPayload } from '../../common/RemoteInputTypes';
+import type { Display } from 'electron';
 
 const MAX_EVENTS_PER_SECOND = 60;
 let eventTimestamps: number[] = [];
+let accessibilityPromptShown = false;
+
+export type RemoteInputInjectResult = {
+	ok: boolean;
+	reason?: 'accessibility' | 'rate_limited' | 'display' | 'platform' | 'swift';
+};
 
 export function isMacPlatform(): boolean {
 	return process.platform === 'darwin';
@@ -14,6 +21,11 @@ export function isAccessibilityTrusted(prompt = false): boolean {
 		return false;
 	}
 	return systemPreferences.isTrustedAccessibilityClient(prompt);
+}
+
+export function parseDisplayIdFromScreenSourceId(sourceId: string): string {
+	const match = sourceId.match(/^screen:(\d+):/i);
+	return match?.[1] ?? '';
 }
 
 function isRateLimited(): boolean {
@@ -31,19 +43,37 @@ function electronYToCgGlobalY(electronY: number): number {
 	return primary.bounds.height - electronY;
 }
 
-function resolveAbsolutePoint(
+function resolveTargetDisplay(
 	displayID: string,
+	desktopCapturerSourceID: string,
+): Display | null {
+	const displays = screen.getAllDisplays();
+	if (displayID) {
+		const match = displays.find((d) => `${d.id}` === displayID);
+		if (match) {
+			return match;
+		}
+	}
+
+	const parsedDisplayId = parseDisplayIdFromScreenSourceId(desktopCapturerSourceID);
+	if (parsedDisplayId) {
+		const match = displays.find((d) => `${d.id}` === parsedDisplayId);
+		if (match) {
+			return match;
+		}
+	}
+
+	return screen.getPrimaryDisplay();
+}
+
+function resolveAbsolutePoint(
+	display: Display,
 	sourceDisplaySize: { width: number; height: number } | undefined,
 	xFraction: number,
 	yFraction: number,
-): { x: number; y: number } | null {
-	const display = screen.getAllDisplays().find((d) => `${d.id}` === displayID);
-	if (!display) {
-		return null;
-	}
-
-	const width = sourceDisplaySize?.width ?? display.size.width;
-	const height = sourceDisplaySize?.height ?? display.size.height;
+): { x: number; y: number } {
+	const width = sourceDisplaySize?.width ?? display.bounds.width;
+	const height = sourceDisplaySize?.height ?? display.bounds.height;
 	const electronX = display.bounds.x + xFraction * width;
 	const electronY = display.bounds.y + yFraction * height;
 
@@ -59,7 +89,10 @@ function runSwiftInputScript(scriptBody: string): boolean {
 		encoding: 'utf-8',
 	});
 	if (result.error || result.status !== 0) {
-		console.warn('macOS input injection failed', result.stderr || result.error);
+		console.warn(
+			'macOS input injection failed',
+			result.stderr || result.error || result.stdout,
+		);
 		return false;
 	}
 	return true;
@@ -67,31 +100,40 @@ function runSwiftInputScript(scriptBody: string): boolean {
 
 export function injectRemoteInputOnMac(
 	displayID: string,
+	desktopCapturerSourceID: string,
 	sourceDisplaySize: { width: number; height: number } | undefined,
 	payload: RemoteInputPayload,
-): boolean {
+): RemoteInputInjectResult {
 	if (!isMacPlatform()) {
-		return false;
+		return { ok: false, reason: 'platform' };
 	}
+
 	if (!isAccessibilityTrusted(false)) {
-		return false;
+		if (!accessibilityPromptShown) {
+			accessibilityPromptShown = true;
+			isAccessibilityTrusted(true);
+		}
+		return { ok: false, reason: 'accessibility' };
 	}
+
 	if (isRateLimited()) {
-		return false;
+		return { ok: false, reason: 'rate_limited' };
+	}
+
+	const display = resolveTargetDisplay(displayID, desktopCapturerSourceID);
+	if (!display) {
+		return { ok: false, reason: 'display' };
 	}
 
 	const point = resolveAbsolutePoint(
-		displayID,
+		display,
 		sourceDisplaySize,
 		payload.x,
 		payload.y,
 	);
-	if (!point) {
-		return false;
-	}
 
 	if (payload.action === 'click') {
-		return runSwiftInputScript(`
+		const ok = runSwiftInputScript(`
 import CoreGraphics
 let p = CGPoint(x: ${point.x}, y: ${point.y})
 func post(_ t: CGEventType) {
@@ -102,15 +144,16 @@ post(.mouseMoved)
 post(.leftMouseDown)
 post(.leftMouseUp)
 `);
+		return ok ? { ok: true } : { ok: false, reason: 'swift' };
 	}
 
 	if (payload.action === 'scroll') {
 		const deltaY = payload.deltaY ?? 0;
 		const lines = Math.max(-10, Math.min(10, Math.round(deltaY / 40)));
 		if (lines === 0) {
-			return true;
+			return { ok: true };
 		}
-		return runSwiftInputScript(`
+		const ok = runSwiftInputScript(`
 import CoreGraphics
 let p = CGPoint(x: ${point.x}, y: ${point.y})
 let move = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: p, mouseButton: .left)!
@@ -119,7 +162,8 @@ let scroll = CGEvent(scrollWheelEvent2Source: nil, units: .line, wheelCount: 1, 
 scroll.location = p
 scroll.post(tap: .cghidEventTap)
 `);
+		return ok ? { ok: true } : { ok: false, reason: 'swift' };
 	}
 
-	return false;
+	return { ok: false, reason: 'platform' };
 }

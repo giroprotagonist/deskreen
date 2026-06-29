@@ -139,6 +139,15 @@ export default (peerConnection: PeerConnection) => {
 
 		setTimeout(getSharingShourceType, 1000, peerConnection);
 
+		if (isReceiverMode()) {
+			const capabilityPoll = window.setInterval(() => {
+				getSharingShourceType(peerConnection);
+			}, 8000);
+			stream.addEventListener('inactive', () => {
+				window.clearInterval(capabilityPoll);
+			});
+		}
+
 		peerConnection.isStreamStarted = true;
 
 		// if any transient error dialog was shown earlier, close it now
@@ -177,6 +186,12 @@ export default (peerConnection: PeerConnection) => {
 
 		if (dataJSON.type === 'remote_control_capability') {
 			peerConnection.UIHandler.setRemoteControlCapabilityCallback(
+				dataJSON.payload,
+			);
+		}
+
+		if (dataJSON.type === 'remote_input_result') {
+			peerConnection.UIHandler.setRemoteInputResultCallback?.(
 				dataJSON.payload,
 			);
 		}
