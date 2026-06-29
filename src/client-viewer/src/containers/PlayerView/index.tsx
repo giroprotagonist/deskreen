@@ -62,9 +62,26 @@ function PlayerView(props: PlayerViewProps) {
 			} else {
 				videoRef.current.src = streamUrl;
 			}
-			// Mobile/WebView: muted autoplay so video renders immediately.
-			videoRef.current.muted = mobileLike ? !audioUnlockedRef.current : !isPlaying;
+
+			const hasAudio = streamUrl.getAudioTracks().length > 0;
+			if (hasAudio && isReceiverMode()) {
+				audioUnlockedRef.current = true;
+				videoRef.current.muted = false;
+			} else {
+				// Mobile/WebView: muted autoplay so video renders immediately.
+				videoRef.current.muted = mobileLike
+					? !audioUnlockedRef.current
+					: !isPlaying;
+			}
+
 			videoRef.current.play().catch((error) => {
+				if (hasAudio && isReceiverMode() && videoRef.current) {
+					videoRef.current.muted = true;
+					videoRef.current.play().catch((retryError) => {
+						console.error('Error playing video:', retryError);
+					});
+					return;
+				}
 				console.error('Error playing video:', error);
 			});
 			return;
@@ -76,11 +93,13 @@ function PlayerView(props: PlayerViewProps) {
 	useEffect(() => {
 		if (isWithControls) {
 			if (!videoRef.current) return;
-			if (mobileLike) {
-				videoRef.current.muted = !audioUnlockedRef.current;
-			} else {
-				videoRef.current.muted = !isPlaying;
-			}
+		if (mobileLike) {
+			videoRef.current.muted = !audioUnlockedRef.current;
+		} else if (isReceiverMode() && streamUrl?.getAudioTracks().length) {
+			videoRef.current.muted = false;
+		} else {
+			videoRef.current.muted = !isPlaying;
+		}
 			if (isPlaying) {
 				videoRef.current.play().catch((error) => {
 					console.error('Error playing video:', error);
@@ -90,7 +109,7 @@ function PlayerView(props: PlayerViewProps) {
 			}
 		}
 		// react-player play/pause is handled via its `playing` prop
-	}, [isPlaying, isWithControls, mobileLike]);
+	}, [isPlaying, isWithControls, mobileLike, streamUrl]);
 
 	// initialize toaster
 	useEffect(() => {

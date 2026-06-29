@@ -1,5 +1,5 @@
 import { IpcEvents } from '../../../../common/IpcEvents.enum';
-import setHostCaptureSessionActive from './setHostCaptureSessionActive';
+import captureDesktopMediaStream from './captureDesktopMediaStream';
 
 export default async function getDesktopSourceStreamBySourceID(
 	sourceID: string,
@@ -9,7 +9,7 @@ export default async function getDesktopSourceStreamBySourceID(
 	_maxSizeMultiplier = 1,
 	minFrameRate = 15,
 	maxFrameRate = 60,
-	includeSystemAudio = false,
+	includeSystemAudio = true,
 ): Promise<MediaStream> {
 	const trimmedSourceId = sourceID.trim();
 	if (trimmedSourceId !== '') {
@@ -19,16 +19,10 @@ export default async function getDesktopSourceStreamBySourceID(
 		);
 	}
 
-	await setHostCaptureSessionActive(true);
-	try {
-		return await navigator.mediaDevices.getDisplayMedia({
-			video: {
-				frameRate: { min: minFrameRate, ideal: maxFrameRate, max: maxFrameRate },
-			},
-			audio: includeSystemAudio,
-		});
-	} catch (error) {
-		await setHostCaptureSessionActive(false);
-		throw error;
-	}
+	return captureDesktopMediaStream(
+		{
+			frameRate: { min: minFrameRate, ideal: maxFrameRate, max: maxFrameRate },
+		},
+		includeSystemAudio,
+	);
 }

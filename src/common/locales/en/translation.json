@@ -189,6 +189,8 @@
 	"no-windows-found-instructions": "No application windows were detected. Open the app you want to share, check Screen Recording permission, then click Refresh.",
 	"screen-recording-restart-required": "Restart Deskreen to apply Screen Recording permission",
 	"screen-recording-restart-instructions": "Screen Recording looks enabled in System Settings, but Deskreen still cannot access your display. Quit Deskreen completely with Cmd+Q, then reopen it. If that does not help, turn the Deskreen CE toggle off and on in Screen Recording settings, then restart Deskreen again.",
+	"mute-mac-speakers-while-casting": "Mute Mac speakers while casting",
+	"mute-mac-speakers-while-casting-description": "Lowers Mac output volume during a cast so audio is heard on the viewer device only. Restored when casting stops.",
 	"auto-casting-to-your-tablet": "Casting to your tablet automatically.",
 	"pick-a-screen-to-start-casting": "Choose a screen once — Deskreen will remember it for next time."
 }

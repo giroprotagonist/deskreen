@@ -73,5 +73,5 @@ export default async function createDesktopCapturerStream(
 		console.warn('failed to list alternate screen sources', listSourcesError);
 	}
 
-	peerConnection.localStream = await getDisplayMediaStream(false);
+	peerConnection.localStream = await getDisplayMediaStream(true);
 }

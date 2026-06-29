@@ -2,6 +2,7 @@ import { IpcEvents } from '../../../../common/IpcEvents.enum';
 import NullSimplePeer from './NullSimplePeer';
 import NullUser from './NullUser';
 import setHostCaptureSessionActive from './setHostCaptureSessionActive';
+import syncHostCastAudioOutput from './syncHostCastAudioOutput';
 
 export default function handleSelfDestroy(
 	peerConnection: PeerConnection,
@@ -35,6 +36,7 @@ export default function handleSelfDestroy(
 
 	// cleanup media stream
 	if (peerConnection.localStream) {
+		void syncHostCastAudioOutput(null, false);
 		void setHostCaptureSessionActive(false);
 		peerConnection.localStream.getTracks().forEach((track) => {
 			track.stop();

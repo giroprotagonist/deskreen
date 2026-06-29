@@ -9,6 +9,7 @@ import {
 	Text,
 	TabsExpander,
 	Callout,
+	Switch,
 } from '@blueprintjs/core';
 import { Col, Row } from 'react-flexbox-grid';
 import { createStyles, makeStyles } from '@material-ui/core/styles';
@@ -79,6 +80,8 @@ export default function SettingsOverlay(
 	const { handleClose, isSettingsOpen } = props;
 	const [latestVersion, setLatestVersion] = useState('');
 	const [currentVersion, setCurrentVersion] = useState('');
+	const [muteMacSpeakersWhileCasting, setMuteMacSpeakersWhileCasting] =
+		useState(true);
 
 	const { t } = useTranslation();
 
@@ -137,6 +140,14 @@ export default function SettingsOverlay(
 			}
 		};
 		getCurrentVersion();
+		void window.electron.ipcRenderer
+			.invoke(IpcEvents.GetMuteMacSpeakersWhileCasting)
+			.then((enabled: boolean) => {
+				setMuteMacSpeakersWhileCasting(Boolean(enabled));
+			})
+			.catch((error) => {
+				console.error('Error getting mute-while-casting setting:', error);
+			});
 	}, []);
 
 	const hasUpdate =
@@ -181,6 +192,29 @@ export default function SettingsOverlay(
 						label={t('language')}
 						input={<LanguageSelector />}
 					/>
+				</div>
+
+				<div style={{ marginTop: '24px' }}>
+					<SettingRowLabelAndInput
+						icon="volume-off"
+						label={t('mute-mac-speakers-while-casting')}
+						input={
+							<Switch
+								checked={muteMacSpeakersWhileCasting}
+								onChange={(event) => {
+									const enabled = event.currentTarget.checked;
+									setMuteMacSpeakersWhileCasting(enabled);
+									void window.electron.ipcRenderer.invoke(
+										IpcEvents.SetMuteMacSpeakersWhileCasting,
+										enabled,
+									);
+								}}
+							/>
+						}
+					/>
+					<Text className="bp3-text-muted" style={{ display: 'block', marginTop: 8 }}>
+						{t('mute-mac-speakers-while-casting-description')}
+					</Text>
 				</div>
 
 				<Row

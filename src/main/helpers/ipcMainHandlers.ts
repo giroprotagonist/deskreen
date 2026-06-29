@@ -24,6 +24,10 @@ import isLinuxWaylandSession from '../utils/isLinuxWaylandSession';
 import getScreenCapturePermissionStatus from '../utils/getScreenCapturePermissionStatus';
 import waitForPeerStreamReady from './waitForPeerStreamReady';
 import {
+	muteMacOutputVolume,
+	restoreMacOutputVolume,
+} from '../utils/macOutputVolume';
+import {
 	probeScreenCaptureAccess,
 	setPreferredDesktopCapturerSourceId,
 } from './configureScreenCaptureSession';
@@ -515,6 +519,37 @@ export const initIpcMainHandlers = (mainWindow: BrowserWindow): void => {
 		getDeskreenGlobal().desktopCapturerSourcesService.setCaptureSessionActive(
 			Boolean(active),
 		);
+		if (!active) {
+			restoreMacOutputVolume();
+		}
+	});
+
+	ipcMain.handle(IpcEvents.GetMuteMacSpeakersWhileCasting, () => {
+		if (store.has(ElectronStoreKeys.MuteMacSpeakersWhileCasting)) {
+			return store.get(ElectronStoreKeys.MuteMacSpeakersWhileCasting) !== 'false';
+		}
+		return true;
+	});
+
+	ipcMain.handle(IpcEvents.SetMuteMacSpeakersWhileCasting, (_, enabled: boolean) => {
+		store.set(
+			ElectronStoreKeys.MuteMacSpeakersWhileCasting,
+			enabled ? 'true' : 'false',
+		);
+		if (!enabled) {
+			restoreMacOutputVolume();
+		}
+	});
+
+	ipcMain.handle(IpcEvents.SyncMacCastAudioOutput, (_, shouldMuteMac: boolean) => {
+		const muteEnabled =
+			!store.has(ElectronStoreKeys.MuteMacSpeakersWhileCasting) ||
+			store.get(ElectronStoreKeys.MuteMacSpeakersWhileCasting) !== 'false';
+		if (shouldMuteMac && muteEnabled) {
+			muteMacOutputVolume();
+			return;
+		}
+		restoreMacOutputVolume();
 	});
 
 	ipcMain.handle(IpcEvents.GetOrPickDefaultSharingSourceId, async () => {

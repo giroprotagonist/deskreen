@@ -1,18 +1,12 @@
-import setHostCaptureSessionActive from './setHostCaptureSessionActive';
+import captureDesktopMediaStream from './captureDesktopMediaStream';
 
 export default async function getDisplayMediaStream(
-	includeSystemAudio = false,
+	includeSystemAudio = true,
 ): Promise<MediaStream> {
-	await setHostCaptureSessionActive(true);
-	try {
-		return await navigator.mediaDevices.getDisplayMedia({
-			video: {
-				frameRate: { ideal: 30, max: 60 },
-			},
-			audio: includeSystemAudio,
-		});
-	} catch (error) {
-		await setHostCaptureSessionActive(false);
-		throw error;
-	}
+	return captureDesktopMediaStream(
+		{
+			frameRate: { ideal: 30, max: 60 },
+		},
+		includeSystemAudio,
+	);
 }

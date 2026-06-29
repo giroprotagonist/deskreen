@@ -5,6 +5,7 @@ import NullSimplePeer from './NullSimplePeer';
 import getDesktopSourceStreamBySourceID from './getDesktopSourceStreamBySourceID';
 import DesktopCapturerSourceType from '../../../../common/DesktopCapturerSourceType';
 import setHostCaptureSessionActive from './setHostCaptureSessionActive';
+import syncHostCastAudioOutput from './syncHostCastAudioOutput';
 // import simplePeerHandleSdpTransform from './simplePeerHandleSdpTransform';
 
 const MAX_CAPTURE_RECOVERY_ATTEMPTS = 4;
@@ -59,6 +60,7 @@ export function attachCaptureTrackEndedHandler(
 			endedTrack.stop();
 			peerConnection.localStream = newStream;
 			recoveryAttempts = 0;
+			void syncHostCastAudioOutput(newStream, true);
 			attachCaptureTrackEndedHandler(peerConnection, newTrack);
 		} catch (error) {
 			console.error(
@@ -99,6 +101,7 @@ export default function handleCreatePeer(
 
 		// cleanup existing stream before creating new one
 		if (peerConnection.localStream) {
+			void syncHostCastAudioOutput(null, false);
 			void setHostCaptureSessionActive(false);
 			peerConnection.localStream.getTracks().forEach((track) => {
 				track.stop();
@@ -137,6 +140,10 @@ export default function handleCreatePeer(
 				// TODO: basically here we need a client side simple peer, but we get a nodejs side simple peer
 				if (peerConnection.localStream !== null) {
 					peerConnection.peer.addStream(peerConnection.localStream);
+					void syncHostCastAudioOutput(
+						peerConnection.localStream,
+						true,
+					);
 					const videoTrack =
 						peerConnection.localStream.getVideoTracks()[0];
 					if (videoTrack) {

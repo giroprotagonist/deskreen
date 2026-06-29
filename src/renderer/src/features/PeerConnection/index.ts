@@ -13,6 +13,7 @@ import DesktopCapturerSourceType from '../../../../common/DesktopCapturerSourceT
 import getAppLanguage from '../../../../common/getAppLanguage';
 import { IpcEvents } from '../../../../common/IpcEvents.enum';
 import getDesktopSourceStreamBySourceID from './getDesktopSourceStreamBySourceID';
+import syncHostCastAudioOutput from './syncHostCastAudioOutput';
 
 import { Device } from '../../../../common/Device';
 import { LocalPeerUser } from '../../../../common/LocalPeerUser';
@@ -192,6 +193,7 @@ export default class PeerConnection {
 				// update local stream reference to the new stream
 				// the new stream's track is now being used in the peer connection
 				this.localStream = newStream;
+				void syncHostCastAudioOutput(newStream, true);
 				attachCaptureTrackEndedHandler(this, newVideoTrack);
 
 				// update sourceDisplaySize from actual stream to ensure correct resolution
