@@ -13,6 +13,11 @@ import { ScreenSharingSource } from './ScreenSharingSourceEnum';
 import isReceiverMode, {
 	isMobilePlaybackDevice,
 } from '../../utils/isReceiverMode';
+import {
+	applyReceiverQualityBufferFromPreference,
+	getPeerConnectionFromSimplePeer,
+	registerReceiverPeerConnection,
+} from '../../utils/receiverJitterBuffer';
 
 export function getSharingShourceType(peerConnection: PeerConnection) {
 	try {
@@ -28,6 +33,12 @@ export default (peerConnection: PeerConnection) => {
 	}
 	peerConnection.peer.on('stream', (stream) => {
 		peerConnection.setUrlCallback(stream);
+
+		if (isReceiverMode() && peerConnection.peer) {
+			const pc = getPeerConnectionFromSimplePeer(peerConnection.peer);
+			registerReceiverPeerConnection(pc);
+			applyReceiverQualityBufferFromPreference();
+		}
 
 		let remoteTrackEndedTimeout: ReturnType<typeof setTimeout> | null = null;
 		const trackEndedGraceMs = isReceiverMode()
@@ -84,6 +95,9 @@ export default (peerConnection: PeerConnection) => {
 			if (event.track.kind === 'video') {
 				clearRemoteTrackEndedTimeout();
 				bindRemoteVideoTrackHandlers(event.track);
+			}
+			if (isReceiverMode()) {
+				applyReceiverQualityBufferFromPreference();
 			}
 		};
 

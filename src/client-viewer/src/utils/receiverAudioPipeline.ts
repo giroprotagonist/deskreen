@@ -1,31 +1,49 @@
+import { RECEIVER_QUALITY_BUFFER_DELAY_MS } from '../constants/castReliabilityConstants';
+
 type MonoGraphNodes = {
 	splitter: ChannelSplitterNode;
 	monoMix: GainNode;
 	merger: ChannelMergerNode;
 };
 
+export type ReceiverAudioPipelineOptions = {
+	monoEnabled: boolean;
+	bufferEnabled: boolean;
+	bufferDelayMs?: number;
+};
+
 /**
- * Routes receiver <video> audio through Web Audio when mono downmix is enabled.
- * Stereo passthrough uses source → destination once a MediaElementSource exists.
+ * Routes receiver <video> audio through Web Audio for mono downmix and/or
+ * quality-buffer delay so audio stays aligned with the video jitter target.
  */
-export class ReceiverMonoAudioController {
+export class ReceiverAudioPipelineController {
 	private audioContext: AudioContext | null = null;
 
 	private source: MediaElementAudioSourceNode | null = null;
 
 	private monoGraph: MonoGraphNodes | null = null;
 
+	private delayNode: DelayNode | null = null;
+
 	private videoElement: HTMLVideoElement | null = null;
 
 	private isMonoEnabled = false;
 
-	attach(video: HTMLVideoElement, monoEnabled: boolean): void {
+	private isBufferEnabled = false;
+
+	private bufferDelaySeconds = RECEIVER_QUALITY_BUFFER_DELAY_MS / 1000;
+
+	attach(video: HTMLVideoElement, options: ReceiverAudioPipelineOptions): void {
 		if (this.videoElement && this.videoElement !== video) {
 			this.release();
 		}
 		this.videoElement = video;
-		this.isMonoEnabled = monoEnabled;
-		if (!monoEnabled && !this.source) {
+		this.isMonoEnabled = options.monoEnabled;
+		this.isBufferEnabled = options.bufferEnabled;
+		if (options.bufferDelayMs !== undefined) {
+			this.bufferDelaySeconds = options.bufferDelayMs / 1000;
+		}
+		if (!this.needsWebAudio() && !this.source) {
 			return;
 		}
 		this.ensureContext();
@@ -35,7 +53,24 @@ export class ReceiverMonoAudioController {
 
 	async setMonoEnabled(enabled: boolean): Promise<void> {
 		this.isMonoEnabled = enabled;
-		if (!enabled && !this.source) {
+		if (!this.needsWebAudio() && !this.source) {
+			return;
+		}
+		if (!this.videoElement) {
+			return;
+		}
+		await this.ensureContextRunning();
+		this.ensureSource();
+		this.applyRouting();
+	}
+
+	async setBufferEnabled(
+		enabled: boolean,
+		bufferDelayMs = RECEIVER_QUALITY_BUFFER_DELAY_MS,
+	): Promise<void> {
+		this.isBufferEnabled = enabled;
+		this.bufferDelaySeconds = bufferDelayMs / 1000;
+		if (!this.needsWebAudio() && !this.source) {
 			return;
 		}
 		if (!this.videoElement) {
@@ -49,6 +84,7 @@ export class ReceiverMonoAudioController {
 	release(): void {
 		this.disconnectSource();
 		this.monoGraph = null;
+		this.delayNode = null;
 		this.source = null;
 		if (this.audioContext) {
 			void this.audioContext.close();
@@ -56,6 +92,11 @@ export class ReceiverMonoAudioController {
 		}
 		this.videoElement = null;
 		this.isMonoEnabled = false;
+		this.isBufferEnabled = false;
+	}
+
+	private needsWebAudio(): boolean {
+		return this.isMonoEnabled || this.isBufferEnabled;
 	}
 
 	private ensureContext(): void {
@@ -89,7 +130,7 @@ export class ReceiverMonoAudioController {
 				this.videoElement,
 			);
 		} catch (error) {
-			console.warn('Unable to create MediaElementSource for mono audio', error);
+			console.warn('Unable to create MediaElementSource for audio pipeline', error);
 		}
 	}
 
@@ -114,6 +155,19 @@ export class ReceiverMonoAudioController {
 		return this.monoGraph;
 	}
 
+	private ensureDelayNode(): DelayNode {
+		if (!this.audioContext) {
+			throw new Error('AudioContext is not initialized');
+		}
+		if (!this.delayNode) {
+			this.delayNode = this.audioContext.createDelay(10);
+		}
+		this.delayNode.delayTime.value = this.isBufferEnabled
+			? this.bufferDelaySeconds
+			: 0;
+		return this.delayNode;
+	}
+
 	private disconnectSource(): void {
 		if (!this.source) {
 			return;
@@ -132,6 +186,13 @@ export class ReceiverMonoAudioController {
 				// ignore
 			}
 		}
+		if (this.delayNode) {
+			try {
+				this.delayNode.disconnect();
+			} catch {
+				// ignore
+			}
+		}
 	}
 
 	private applyRouting(): void {
@@ -139,12 +200,21 @@ export class ReceiverMonoAudioController {
 			return;
 		}
 		this.disconnectSource();
+
+		let outputNode: AudioNode = this.source;
 		if (this.isMonoEnabled) {
 			const graph = this.ensureMonoGraph();
 			this.source.connect(graph.splitter);
-			graph.merger.connect(this.audioContext.destination);
+			outputNode = graph.merger;
+		}
+
+		if (this.isBufferEnabled) {
+			const delay = this.ensureDelayNode();
+			outputNode.connect(delay);
+			delay.connect(this.audioContext.destination);
 			return;
 		}
-		this.source.connect(this.audioContext.destination);
+
+		outputNode.connect(this.audioContext.destination);
 	}
 }

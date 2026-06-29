@@ -10,11 +10,17 @@ import {
 import { type VideoQualityType } from '../../features/VideoAutoQualityOptimizer/VideoQualityEnum';
 import { togglePlayerFullscreen } from '../../utils/playerFullscreen';
 import isReceiverMode, { isMobilePlaybackDevice } from '../../utils/isReceiverMode';
-import { ReceiverMonoAudioController } from '../../utils/receiverMonoAudio';
+import { ReceiverAudioPipelineController } from '../../utils/receiverAudioPipeline';
 import {
 	getReceiverMonoOutputPreference,
 	setReceiverMonoOutputPreference,
 } from '../../utils/receiverMonoOutputPreference';
+import {
+	getReceiverQualityBufferPreference,
+	setReceiverQualityBufferPreference,
+} from '../../utils/receiverQualityBufferPreference';
+import { applyReceiverQualityBufferFromPreference } from '../../utils/receiverJitterBuffer';
+import { RECEIVER_QUALITY_BUFFER_DELAY_MS } from '../../constants/castReliabilityConstants';
 import { ReceiverStreamHealthMonitor } from '../../utils/receiverStreamHealth';
 
 interface PlayerViewProps {
@@ -54,7 +60,7 @@ function PlayerView(props: PlayerViewProps) {
 
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const audioUnlockedRef = useRef(false);
-	const monoAudioControllerRef = useRef<ReceiverMonoAudioController | null>(
+	const monoAudioControllerRef = useRef<ReceiverAudioPipelineController | null>(
 		null,
 	);
 	const streamHealthMonitorRef = useRef<ReceiverStreamHealthMonitor | null>(
@@ -67,13 +73,17 @@ function PlayerView(props: PlayerViewProps) {
 	const receiverMode = isReceiverMode();
 	const hasStreamAudio = Boolean(streamUrl?.getAudioTracks().length);
 	const showMonoOutputToggle = receiverMode && hasStreamAudio;
+	const showQualityBufferToggle = receiverMode;
 	const [isMonoOutputEnabled, setIsMonoOutputEnabled] = useState(
 		() => getReceiverMonoOutputPreference(),
+	);
+	const [isQualityBufferEnabled, setIsQualityBufferEnabled] = useState(
+		() => getReceiverQualityBufferPreference(),
 	);
 
 	useEffect(() => {
 		if (!monoAudioControllerRef.current) {
-			monoAudioControllerRef.current = new ReceiverMonoAudioController();
+			monoAudioControllerRef.current = new ReceiverAudioPipelineController();
 		}
 		const controller = monoAudioControllerRef.current;
 
@@ -86,12 +96,18 @@ function PlayerView(props: PlayerViewProps) {
 			return;
 		}
 
-		if (showMonoOutputToggle) {
-			controller.attach(videoRef.current, isMonoOutputEnabled);
-		} else {
-			controller.attach(videoRef.current, false);
-		}
-	}, [showMonoOutputToggle, isWithControls, streamUrl, isMonoOutputEnabled]);
+		controller.attach(videoRef.current, {
+			monoEnabled: showMonoOutputToggle && isMonoOutputEnabled,
+			bufferEnabled: isQualityBufferEnabled,
+			bufferDelayMs: RECEIVER_QUALITY_BUFFER_DELAY_MS,
+		});
+	}, [
+		showMonoOutputToggle,
+		isWithControls,
+		streamUrl,
+		isMonoOutputEnabled,
+		isQualityBufferEnabled,
+	]);
 
 	useEffect(() => {
 		return () => {
@@ -117,13 +133,14 @@ function PlayerView(props: PlayerViewProps) {
 			streamHealthMonitorRef.current = new ReceiverStreamHealthMonitor();
 		}
 		streamHealthMonitorRef.current.attach(videoRef.current, {
+			qualityBufferEnabled: isQualityBufferEnabled,
 			onFrozen: () => {
 				videoRef.current?.play().catch(() => {
 					// ignore autoplay policy errors
 				});
 			},
 		});
-	}, [receiverMode, streamUrl, isWithControls]);
+	}, [receiverMode, streamUrl, isWithControls, isQualityBufferEnabled]);
 
 	useEffect(() => {
 		if (!receiverMode || !streamUrl) {
@@ -168,6 +185,16 @@ function PlayerView(props: PlayerViewProps) {
 		setIsMonoOutputEnabled(enabled);
 		setReceiverMonoOutputPreference(enabled);
 		await monoAudioControllerRef.current?.setMonoEnabled(enabled);
+	}, []);
+
+	const handleQualityBufferToggle = useCallback(async (enabled: boolean) => {
+		setIsQualityBufferEnabled(enabled);
+		setReceiverQualityBufferPreference(enabled);
+		applyReceiverQualityBufferFromPreference();
+		await monoAudioControllerRef.current?.setBufferEnabled(
+			enabled,
+			RECEIVER_QUALITY_BUFFER_DELAY_MS,
+		);
 	}, []);
 
 	useEffect(() => {
@@ -250,6 +277,12 @@ function PlayerView(props: PlayerViewProps) {
 		if (nextPlaying && isMonoOutputEnabled) {
 			void monoAudioControllerRef.current?.setMonoEnabled(true);
 		}
+		if (nextPlaying && isQualityBufferEnabled) {
+			void monoAudioControllerRef.current?.setBufferEnabled(
+				true,
+				RECEIVER_QUALITY_BUFFER_DELAY_MS,
+			);
+		}
 		handlePlayPause();
 		
 		// show notification after a small delay to ensure state is updated
@@ -262,7 +295,7 @@ function PlayerView(props: PlayerViewProps) {
 				});
 			}
 		}, 50);
-	}, [handlePlayPause, isPlaying, isMonoOutputEnabled, mobileLike, t]);
+	}, [handlePlayPause, isPlaying, isMonoOutputEnabled, isQualityBufferEnabled, mobileLike, t]);
 
 	// handle iPhone fullscreen exit - detect when video stops and auto-resume
 	useEffect(() => {
@@ -367,6 +400,9 @@ function PlayerView(props: PlayerViewProps) {
 				showMonoOutputToggle={showMonoOutputToggle}
 				isMonoOutputEnabled={isMonoOutputEnabled}
 				onMonoOutputToggle={handleMonoOutputToggle}
+				showQualityBufferToggle={showQualityBufferToggle}
+				isQualityBufferEnabled={isQualityBufferEnabled}
+				onQualityBufferToggle={handleQualityBufferToggle}
 				handleClickFullscreen={async () => {
 					const result = await togglePlayerFullscreen();
 					if (result === 'failed') {

@@ -9,6 +9,7 @@ import {
 	prepare as prepareMessage,
 	type ProcessedPayload,
 } from '../../utils/message';
+import { registerReceiverPeerConnection } from '../../utils/receiverJitterBuffer';
 import applyCastSdpTransform from '../../../../common/webrtc/applyCastSdpTransform';
 import VideoAutoQualityOptimizer from '../VideoAutoQualityOptimizer';
 import {
@@ -116,6 +117,8 @@ export default class PeerConnection {
 		// stop the video stream by clearing the stream URL
 		this.setUrlCallback(null);
 		this.isStreamStarted = false;
+
+		registerReceiverPeerConnection(null);
 
 		// destroy the peer connection
 		if (this.peer) {

@@ -55,6 +55,9 @@ interface PlayerControlPanelProps {
 	showMonoOutputToggle?: boolean;
 	isMonoOutputEnabled?: boolean;
 	onMonoOutputToggle?: (enabled: boolean) => void;
+	showQualityBufferToggle?: boolean;
+	isQualityBufferEnabled?: boolean;
+	onQualityBufferToggle?: (enabled: boolean) => void;
 	// toaster: undefined | HTMLDivElement;
 }
 
@@ -72,6 +75,9 @@ function PlayerControlPanel(props: PlayerControlPanelProps) {
 		showMonoOutputToggle = false,
 		isMonoOutputEnabled = false,
 		onMonoOutputToggle,
+		showQualityBufferToggle = false,
+		isQualityBufferEnabled = false,
+		onQualityBufferToggle,
 	} = props;
 
 	const isFullScreenAPIAvailable = screenfull.isEnabled;
@@ -169,6 +175,11 @@ function PlayerControlPanel(props: PlayerControlPanelProps) {
 		if (!onMonoOutputToggle) return;
 		onMonoOutputToggle(!isMonoOutputEnabled);
 	}, [isMonoOutputEnabled, onMonoOutputToggle]);
+
+	const handleQualityBufferToggle = useCallback(() => {
+		if (!onQualityBufferToggle) return;
+		onQualityBufferToggle(!isQualityBufferEnabled);
+	}, [isQualityBufferEnabled, onQualityBufferToggle]);
 
 	return (
 		<>
@@ -324,6 +335,26 @@ function PlayerControlPanel(props: PlayerControlPanelProps) {
 					<Col xs={12} md={3}>
 						<Row end="xs">
 							<Col xs={12}>
+								{showQualityBufferToggle && (
+									<Tooltip
+										content={t(
+											'Prioritizes A/V sync and quality over low latency',
+										)}
+										position={Position.LEFT}
+									>
+										<Switch
+											onChange={handleQualityBufferToggle}
+											innerLabel={isQualityBufferEnabled ? t('ON') : t('OFF')}
+											inline
+											label={t('Quality buffer')}
+											alignIndicator={Alignment.RIGHT}
+											checked={isQualityBufferEnabled}
+											style={{
+												marginBottom: '12px',
+											}}
+										/>
+									</Tooltip>
+								)}
 								{showMonoOutputToggle && (
 									<Switch
 										onChange={handleMonoOutputToggle}

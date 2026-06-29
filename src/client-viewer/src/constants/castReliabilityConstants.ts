@@ -17,3 +17,12 @@ export const RECEIVER_DISCONNECT_STREAK_THRESHOLD = 6;
 export const SOCKET_PING_TIMEOUT_MS = 5000;
 
 export const SOCKET_HEALTH_CHECK_INTERVAL_MS = 5000;
+
+/** Target playout delay when receiver quality buffer is enabled. */
+export const RECEIVER_QUALITY_BUFFER_DELAY_MS = 1500;
+
+/** Longer frame-stall tolerance while quality buffer is filling. */
+export const RECEIVER_QUALITY_BUFFER_FRAME_STALE_MS = 16000;
+
+/** Longer frozen threshold before recovery kicks in with quality buffer. */
+export const RECEIVER_QUALITY_BUFFER_FROZEN_THRESHOLD_MS = 10000;

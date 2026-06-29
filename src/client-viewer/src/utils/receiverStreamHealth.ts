@@ -1,3 +1,7 @@
+import {
+	RECEIVER_QUALITY_BUFFER_FRAME_STALE_MS,
+	RECEIVER_QUALITY_BUFFER_FROZEN_THRESHOLD_MS,
+} from '../constants/castReliabilityConstants';
 import isReceiverMode from './isReceiverMode';
 
 const FRAME_STALE_MS = 8000;
@@ -7,12 +11,30 @@ const RECOVER_PLAY_INTERVAL_MS = 3000;
 type StreamHealthSnapshot = {
 	lastFrameAt: number;
 	isMonitoring: boolean;
+	qualityBufferEnabled: boolean;
 };
 
 const snapshot: StreamHealthSnapshot = {
 	lastFrameAt: 0,
 	isMonitoring: false,
+	qualityBufferEnabled: false,
 };
+
+function getFrameStaleMs(): number {
+	return snapshot.qualityBufferEnabled
+		? RECEIVER_QUALITY_BUFFER_FRAME_STALE_MS
+		: FRAME_STALE_MS;
+}
+
+function getFrozenThresholdMs(): number {
+	return snapshot.qualityBufferEnabled
+		? RECEIVER_QUALITY_BUFFER_FROZEN_THRESHOLD_MS
+		: FROZEN_THRESHOLD_MS;
+}
+
+export function setReceiverStreamHealthBufferMode(enabled: boolean): void {
+	snapshot.qualityBufferEnabled = enabled;
+}
 
 export function markCastFrameReceived(): void {
 	snapshot.lastFrameAt = Date.now();
@@ -23,7 +45,7 @@ export function isCastStreamStale(): boolean {
 	if (!snapshot.isMonitoring || snapshot.lastFrameAt === 0) {
 		return false;
 	}
-	return Date.now() - snapshot.lastFrameAt > FRAME_STALE_MS;
+	return Date.now() - snapshot.lastFrameAt > getFrameStaleMs();
 }
 
 export function isCastStreamHealthy(): boolean {
@@ -45,11 +67,12 @@ export class ReceiverStreamHealthMonitor {
 
 	attach(
 		video: HTMLVideoElement,
-		options?: { onFrozen?: () => void },
+		options?: { onFrozen?: () => void; qualityBufferEnabled?: boolean },
 	): void {
 		this.detach();
 		this.video = video;
 		this.onFrozen = options?.onFrozen ?? null;
+		setReceiverStreamHealthBufferMode(options?.qualityBufferEnabled ?? false);
 		this.lastCurrentTime = video.currentTime;
 		this.lastProgressAt = Date.now();
 		snapshot.isMonitoring = true;
@@ -97,12 +120,14 @@ export class ReceiverStreamHealthMonitor {
 			}
 
 			const staleMs = Date.now() - this.lastProgressAt;
-			if (staleMs >= FROZEN_THRESHOLD_MS) {
+			const frozenThresholdMs = getFrozenThresholdMs();
+			const frameStaleMs = getFrameStaleMs();
+			if (staleMs >= frozenThresholdMs) {
 				this.video.play().catch(() => {
 					// autoplay policy — ignore
 				});
 			}
-			if (staleMs >= FRAME_STALE_MS) {
+			if (staleMs >= frameStaleMs) {
 				this.onFrozen?.();
 			}
 		}, RECOVER_PLAY_INTERVAL_MS);
@@ -139,6 +164,7 @@ export class ReceiverStreamHealthMonitor {
 		this.onFrozen = null;
 		snapshot.isMonitoring = false;
 		snapshot.lastFrameAt = 0;
+		snapshot.qualityBufferEnabled = false;
 	}
 }
 
