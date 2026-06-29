@@ -9,6 +9,7 @@ import {
 } from '../../constants/appConstants';
 import { type VideoQualityType } from '../../features/VideoAutoQualityOptimizer/VideoQualityEnum';
 import { togglePlayerFullscreen } from '../../utils/playerFullscreen';
+import isReceiverMode, { isMobilePlaybackDevice } from '../../utils/isReceiverMode';
 
 interface PlayerViewProps {
 	isWithControls: boolean;
@@ -46,8 +47,10 @@ function PlayerView(props: PlayerViewProps) {
 	// const player = useRef(null);
 
 	const videoRef = useRef<HTMLVideoElement>(null);
+	const audioUnlockedRef = useRef(false);
 	const toasterRef = useRef<Awaited<ReturnType<typeof OverlayToaster.create>> | null>(null);
-	// no external player ref needed for video.js variant
+	const mobileLike =
+		isReceiverMode() || isMobilePlaybackDevice();
 
 	useEffect(() => {
 		if (!streamUrl) return;
@@ -59,6 +62,8 @@ function PlayerView(props: PlayerViewProps) {
 			} else {
 				videoRef.current.src = streamUrl;
 			}
+			// Mobile/WebView: muted autoplay so video renders immediately.
+			videoRef.current.muted = mobileLike ? !audioUnlockedRef.current : !isPlaying;
 			videoRef.current.play().catch((error) => {
 				console.error('Error playing video:', error);
 			});
@@ -66,11 +71,16 @@ function PlayerView(props: PlayerViewProps) {
 		}
 
 		// video.js mode (default) doesn't need imperative src assignment here
-	}, [streamUrl, isWithControls]);
+	}, [streamUrl, isWithControls, isPlaying, mobileLike]);
 
 	useEffect(() => {
 		if (isWithControls) {
 			if (!videoRef.current) return;
+			if (mobileLike) {
+				videoRef.current.muted = !audioUnlockedRef.current;
+			} else {
+				videoRef.current.muted = !isPlaying;
+			}
 			if (isPlaying) {
 				videoRef.current.play().catch((error) => {
 					console.error('Error playing video:', error);
@@ -80,7 +90,7 @@ function PlayerView(props: PlayerViewProps) {
 			}
 		}
 		// react-player play/pause is handled via its `playing` prop
-	}, [isPlaying, isWithControls]);
+	}, [isPlaying, isWithControls, mobileLike]);
 
 	// initialize toaster
 	useEffect(() => {
@@ -97,6 +107,9 @@ function PlayerView(props: PlayerViewProps) {
 	// wrap handlePlayPause to show toaster notifications
 	const handlePlayPauseWithNotification = useCallback(() => {
 		const nextPlaying = !isPlaying;
+		if (mobileLike && nextPlaying) {
+			audioUnlockedRef.current = true;
+		}
 		handlePlayPause();
 		
 		// show notification after a small delay to ensure state is updated
@@ -109,7 +122,7 @@ function PlayerView(props: PlayerViewProps) {
 				});
 			}
 		}, 50);
-	}, [handlePlayPause, isPlaying, t]);
+	}, [handlePlayPause, isPlaying, mobileLike, t]);
 
 	// handle iPhone fullscreen exit - detect when video stops and auto-resume
 	useEffect(() => {
@@ -251,7 +264,6 @@ function PlayerView(props: PlayerViewProps) {
 							ref={videoRef}
 							autoPlay
 							playsInline
-							muted
 							className="absolute top-0 left-0 w-full h-full"
 							style={{
 								width: '100%',

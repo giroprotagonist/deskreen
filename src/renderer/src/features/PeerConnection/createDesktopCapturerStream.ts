@@ -1,28 +1,77 @@
 import getDesktopSourceStreamBySourceID from './getDesktopSourceStreamBySourceID';
+import getDisplayMediaStream from './getDisplayMediaStream';
 import DesktopCapturerSourceType from '../../../../common/DesktopCapturerSourceType';
+import { IpcEvents } from '../../../../common/IpcEvents.enum';
+
+async function captureWithSourceId(
+	peerConnection: PeerConnection,
+	sourceID: string,
+): Promise<MediaStream> {
+	if (sourceID.includes(DesktopCapturerSourceType.SCREEN)) {
+		return getDesktopSourceStreamBySourceID(
+			sourceID,
+			peerConnection.sourceDisplaySize?.width,
+			peerConnection.sourceDisplaySize?.height,
+			0.5,
+			1,
+		);
+	}
+
+	return getDesktopSourceStreamBySourceID(sourceID);
+}
 
 export default async function createDesktopCapturerStream(
 	peerConnection: PeerConnection,
 	sourceID: string,
 ): Promise<void> {
-	try {
-		if (process.env.RUN_MODE === 'test') return;
+	if (process.env.RUN_MODE === 'test') return;
 
-		if (sourceID.includes(DesktopCapturerSourceType.SCREEN)) {
-			const stream = await getDesktopSourceStreamBySourceID(
-				sourceID,
-				peerConnection.sourceDisplaySize?.width,
-				peerConnection.sourceDisplaySize?.height,
-				0.5,
-				1,
+	const trimmedSourceId = sourceID.trim();
+
+	try {
+		if (trimmedSourceId !== '') {
+			peerConnection.localStream = await captureWithSourceId(
+				peerConnection,
+				trimmedSourceId,
 			);
-			peerConnection.localStream = stream;
-		} else {
-			// when source is app window
-			const stream = await getDesktopSourceStreamBySourceID(sourceID);
-			peerConnection.localStream = stream;
+			return;
 		}
-	} catch (e) {
-		console.error(e);
+	} catch (error) {
+		console.warn(
+			'desktop capturer source capture failed, trying alternate sources',
+			error,
+		);
 	}
+
+	try {
+		const isEntireScreenToShareChosen =
+			trimmedSourceId === '' ||
+			trimmedSourceId.includes(DesktopCapturerSourceType.SCREEN);
+		const { ids } = await window.electron.ipcRenderer.invoke(
+			IpcEvents.GetDesktopSharingSourceIds,
+			{ isEntireScreenToShareChosen },
+		);
+		for (const sourceId of ids as string[]) {
+			if (sourceId === trimmedSourceId) {
+				continue;
+			}
+			try {
+				peerConnection.localStream = await captureWithSourceId(
+					peerConnection,
+					sourceId,
+				);
+				return;
+			} catch (alternateSourceError) {
+				console.warn(
+					'alternate desktop capturer source failed',
+					sourceId,
+					alternateSourceError,
+				);
+			}
+		}
+	} catch (listSourcesError) {
+		console.warn('failed to list alternate screen sources', listSourcesError);
+	}
+
+	peerConnection.localStream = await getDisplayMediaStream(false);
 }

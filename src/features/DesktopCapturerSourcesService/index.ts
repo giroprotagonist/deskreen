@@ -5,6 +5,7 @@ import { desktopCapturer, DesktopCapturerSource } from 'electron';
 import Logger from '../../main/utils/LoggerWithFilePrefix';
 import DesktopCapturerSourceType from '../../common/DesktopCapturerSourceType';
 import isLinuxWaylandSession from '../../main/utils/isLinuxWaylandSession';
+import getScreenCapturePermissionStatus from '../../main/utils/getScreenCapturePermissionStatus';
 
 export interface DesktopCapturerSourceWithType {
 	source: import('electron').DesktopCapturerSource;
@@ -45,6 +46,14 @@ class DesktopCapturerSourcesService {
 
 	portalSelectionPromise: Promise<DesktopCapturerSource | null> | null;
 
+	lastRefreshError: string | null;
+
+	captureSessionActive: boolean;
+
+	permissionWarningLogged: boolean;
+
+	getSourcesChain: Promise<unknown>;
+
 	constructor() {
 		this.sources = new Map<string, DesktopCapturerSourceWithType>();
 		this.lastAvailableScreenIDs = [];
@@ -60,15 +69,91 @@ class DesktopCapturerSourcesService {
 		this.autoRefreshEnabled = !isLinuxWaylandSession;
 		this.refreshPromise = null;
 		this.portalSelectionPromise = null;
+		this.lastRefreshError = null;
+		this.captureSessionActive = false;
+		this.permissionWarningLogged = false;
+		this.getSourcesChain = Promise.resolve();
 
 		if (this.autoRefreshEnabled) {
-			this.startRefreshDesktopCapturerSourcesLoop();
+			this.log.debug(
+				'desktop capturer sources refresh on demand only (no background polling)',
+			);
 		} else {
 			this.log.debug(
 				'skipping desktop capturer auto refresh on wayland session',
 			);
 		}
 		this.startPollForInactiveListenersLoop();
+	}
+
+	getLastRefreshError(): string | null {
+		return this.lastRefreshError;
+	}
+
+	isCaptureSessionActive(): boolean {
+		return this.captureSessionActive;
+	}
+
+	setCaptureSessionActive(active: boolean): void {
+		if (this.captureSessionActive === active) {
+			return;
+		}
+		this.captureSessionActive = active;
+		this.log.warn(
+			active
+				? 'host capture session started'
+				: 'host capture session ended',
+		);
+	}
+
+	private shouldSkipLiveGetSources(reason: string): boolean {
+		if (!this.isCaptureSessionActive()) {
+			return false;
+		}
+		this.log.debug(
+			`safeGetSources: skipping live getSources (${reason}) — capture session active`,
+		);
+		return true;
+	}
+
+	async safeGetSourcesList(
+		options: {
+			types: DesktopCapturerSourceType[];
+			thumbnailSize: { width: number; height: number };
+			fetchWindowIcons?: boolean;
+		},
+		reason: string,
+	): Promise<DesktopCapturerSource[]> {
+		if (this.shouldSkipLiveGetSources(reason)) {
+			return [...this.sources.values()]
+				.filter((entry) => options.types.includes(entry.type))
+				.map((entry) => entry.source);
+		}
+
+		if (
+			process.platform === 'darwin' &&
+			getScreenCapturePermissionStatus() !== 'granted'
+		) {
+			return [];
+		}
+
+		return this.runExclusiveGetSources(async () => {
+			if (this.shouldSkipLiveGetSources(`${reason}-after-queue`)) {
+				return [...this.sources.values()]
+					.filter((entry) => options.types.includes(entry.type))
+					.map((entry) => entry.source);
+			}
+			return desktopCapturer.getSources(options);
+		});
+	}
+
+	private runExclusiveGetSources<T>(operation: () => Promise<T>): Promise<T> {
+		const run = this.getSourcesChain.then(operation, operation);
+		this.getSourcesChain = run.then(
+			() => undefined,
+			() => undefined,
+		);
+		return run;
 	}
 
 	getSourcesMap(): Map<string, DesktopCapturerSourceWithType> {
@@ -150,21 +235,49 @@ class DesktopCapturerSourcesService {
 		//   }
 		// });
 
-		this.sources = await this.getDesktopCapturerSources();
+		const newSources = await this.getDesktopCapturerSources();
+		this.sources = newSources;
+		this.lastRefreshError = null;
+	}
+
+	async probeScreenCaptureAccess(): Promise<boolean> {
+		if (this.isCaptureSessionActive()) {
+			return this.sources.size > 0;
+		}
+		try {
+			const sources = await this.safeGetSourcesList(
+				{
+					types: [DesktopCapturerSourceType.SCREEN],
+					thumbnailSize: { width: 1, height: 1 },
+				},
+				'probeScreenCaptureAccess',
+			);
+			return sources.length > 0;
+		} catch {
+			return false;
+		}
 	}
 
 	async getDesktopCapturerSources(): Promise<
 		Map<string, DesktopCapturerSourceWithType>
 	> {
+		if (this.shouldSkipLiveGetSources('getDesktopCapturerSources')) {
+			return new Map(this.sources);
+		}
+
+		const capturerSources = await this.safeGetSourcesList(
+			{
+				types: [
+					DesktopCapturerSourceType.WINDOW,
+					DesktopCapturerSourceType.SCREEN,
+				],
+				thumbnailSize: { width: 500, height: 500 },
+				fetchWindowIcons: true,
+			},
+			'getDesktopCapturerSources',
+		);
+
 		const newSources = new Map<string, DesktopCapturerSourceWithType>();
-		const capturerSources = await desktopCapturer.getSources({
-			types: [
-				DesktopCapturerSourceType.WINDOW,
-				DesktopCapturerSourceType.SCREEN,
-			],
-			thumbnailSize: { width: 500, height: 500 },
-			fetchWindowIcons: true, // TODO: use window icons in app UI !
-		});
 		capturerSources.forEach((source) => {
 			newSources.set(source.id, {
 				type: getSourceTypeFromSourceID(source.id),
@@ -174,8 +287,37 @@ class DesktopCapturerSourcesService {
 		return newSources;
 	}
 
+	getCachedCapturerSourceById(
+		sourceId: string,
+	): DesktopCapturerSource | null {
+		const trimmed = sourceId.trim();
+		if (trimmed === '') {
+			return null;
+		}
+		return this.sources.get(trimmed)?.source ?? null;
+	}
+
 	async refreshDesktopCapturerSources(): Promise<void> {
-		// TODO: implement get available sources logic here;
+		if (this.isCaptureSessionActive()) {
+			this.log.debug(
+				'skipping refreshDesktopCapturerSources while capture session active',
+			);
+			return;
+		}
+
+		if (
+			process.platform === 'darwin' &&
+			getScreenCapturePermissionStatus() !== 'granted'
+		) {
+			if (!this.permissionWarningLogged) {
+				this.log.warn(
+					'skipping source refresh: screen recording permission not granted',
+				);
+				this.permissionWarningLogged = true;
+			}
+			return;
+		}
+
 		if (this.refreshPromise) {
 			return this.refreshPromise;
 		}
@@ -187,7 +329,14 @@ class DesktopCapturerSourcesService {
 				this.checkForClosedWindows();
 				this.checkForScreensDisconnected();
 			} catch (e) {
-				this.log.error(e);
+				const message =
+					typeof e === 'string'
+						? e
+						: e instanceof Error
+							? e.message
+							: 'Failed to get sources.';
+				this.lastRefreshError = message;
+				this.log.error(message, e);
 			} finally {
 				this.refreshPromise = null;
 			}
@@ -205,11 +354,14 @@ class DesktopCapturerSourcesService {
 
 		this.portalSelectionPromise = (async () => {
 			try {
-				const sources = await desktopCapturer.getSources({
-					types,
-					thumbnailSize: { width: 500, height: 500 },
-					fetchWindowIcons: types.includes(DesktopCapturerSourceType.WINDOW),
-				});
+				const sources = await this.safeGetSourcesList(
+					{
+						types,
+						thumbnailSize: { width: 500, height: 500 },
+						fetchWindowIcons: types.includes(DesktopCapturerSourceType.WINDOW),
+					},
+					'requestPortalSource',
+				);
 				if (sources.length === 0) {
 					return null;
 				}

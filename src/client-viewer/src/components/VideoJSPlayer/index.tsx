@@ -30,7 +30,7 @@ function VideoJSPlayer(props: VideoJSPlayerProps) {
 		videoEl.className = 'video-js vjs-default-skin';
 		videoEl.setAttribute('playsinline', 'true');
 		videoEl.setAttribute('webkit-playsinline', 'true');
-		videoEl.muted = true; // allow autoplay on mobile/safari
+		videoEl.muted = true;
 		videoEl.style.width = '100%';
 		videoEl.style.height = '100%';
 		videoEl.style.objectFit = 'contain';
@@ -73,6 +73,7 @@ function VideoJSPlayer(props: VideoJSPlayerProps) {
 	useEffect(() => {
 		const el = videoElRef.current;
 		if (!el) return;
+		el.muted = !playing;
 		try {
 			if (stream instanceof MediaStream) {
 				// @ts-ignore srcObject exists on HTMLMediaElement
@@ -102,6 +103,10 @@ function VideoJSPlayer(props: VideoJSPlayerProps) {
 
 	useEffect(() => {
 		const player = playerRef.current;
+		const el = videoElRef.current;
+		if (el) {
+			el.muted = !playing;
+		}
 		if (!player) return;
 		if (playing) {
 			player.play && player.play();

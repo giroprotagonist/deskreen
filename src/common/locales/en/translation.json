@@ -178,5 +178,17 @@
 	"viewing-client-connected-label": "Viewing client connected",
 	"connection-limit-reached-tooltip": "Connection limit reached. Disconnect the current viewing client (or wait for it to disconnect) to connect a new one.",
 	"deskreen-ce-allows-only-one-client-at-same-time": "Deskreen CE allows only one client viewing device connected at the same time.",
-	"this-will-be-available-only-in-pro-version": "More than one devices connection option will be available only in Pro version."
+	"this-will-be-available-only-in-pro-version": "More than one devices connection option will be available only in Pro version.",
+	"failed-to-get-source-name": "Unable to load preview",
+	"failed-to-load-sharing-sources": "Failed to load sharing sources",
+	"screen-recording-permission-required": "Screen Recording permission required",
+	"screen-recording-permission-instructions": "Deskreen needs Screen Recording access to list and share your displays and windows. Enable it in System Settings, then click Refresh.",
+	"open-screen-recording-settings": "Open Screen Recording Settings",
+	"no-sharing-sources-found": "No sources found",
+	"no-screens-found-instructions": "No displays were detected. Check Screen Recording permission, then click Refresh.",
+	"no-windows-found-instructions": "No application windows were detected. Open the app you want to share, check Screen Recording permission, then click Refresh.",
+	"screen-recording-restart-required": "Restart Deskreen to apply Screen Recording permission",
+	"screen-recording-restart-instructions": "Screen Recording looks enabled in System Settings, but Deskreen still cannot access your display. Quit Deskreen completely with Cmd+Q, then reopen it. If that does not help, turn the Deskreen CE toggle off and on in Screen Recording settings, then restart Deskreen again.",
+	"auto-casting-to-your-tablet": "Casting to your tablet automatically.",
+	"pick-a-screen-to-start-casting": "Choose a screen once — Deskreen will remember it for next time."
 }

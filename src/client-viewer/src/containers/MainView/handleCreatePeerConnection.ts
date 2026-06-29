@@ -21,6 +21,8 @@ export default (params: CreatePeerConnectionUseEffectParams) => {
 
 	// return the effect function
 	return () => {
+		let createdPeer: PeerConnection | undefined;
+
 		if (!peer) {
 			if (connectionRoomId === '') {
 				return;
@@ -53,6 +55,8 @@ export default (params: CreatePeerConnectionUseEffectParams) => {
 				UIHandler,
 			);
 
+			createdPeer = _peer;
+
 			setPeer(_peer);
 
 			setTimeout(() => {
@@ -62,10 +66,11 @@ export default (params: CreatePeerConnectionUseEffectParams) => {
 
 		// return cleanup function - cleanup when connectionRoomId changes or component unmounts
 		return () => {
+			createdPeer?.destroy();
 			if (peer) {
 				peer.destroy();
-				setPeer(undefined);
 			}
+			setPeer(undefined);
 		};
 	};
 };

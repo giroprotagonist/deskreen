@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { H3, Dialog, Button, Spinner } from '@blueprintjs/core';
+import { H3, Dialog, Button, Spinner, Callout, Text } from '@blueprintjs/core';
 import { Row, Col } from 'react-flexbox-grid';
 import { createStyles, makeStyles } from '@material-ui/core/styles';
 import CloseOverlayButton from '../../CloseOverlayButton';
@@ -28,8 +28,25 @@ const useStyles = makeStyles(() =>
 			position: 'relative',
 			height: '100%',
 		},
+		emptyState: {
+			display: 'flex',
+			flexDirection: 'column',
+			alignItems: 'center',
+			justifyContent: 'center',
+			height: '100%',
+			padding: '24px',
+			textAlign: 'center',
+			gap: '16px',
+		},
 	}),
 );
+
+interface DesktopSharingSourcesResponse {
+	ids: string[];
+	screenCaptureStatus?: string;
+	captureWorking?: boolean;
+	error?: string;
+}
 
 interface ChooseAppOrScreenOverlayProps {
 	isEntireScreenToShareChosen: boolean;
@@ -56,52 +73,92 @@ export default function ChooseAppOrScreenOverlay(
 
 	const [viewSharingIds, setViewSharingIds] = useState<string[]>([]);
 	const [isLoading, setIsLoading] = useState<boolean>(false);
+	const [screenCaptureStatus, setScreenCaptureStatus] = useState<string>('');
+	const [captureWorking, setCaptureWorking] = useState<boolean | null>(null);
+	const [loadError, setLoadError] = useState<string>('');
 
-	const handleRefreshSources = useCallback(async (): Promise<string[]> => {
+	const handleRefreshSources = useCallback(async (): Promise<{
+		ids: string[];
+		permissionStatus: string;
+	}> => {
 		if (isWaylandSession) {
 			setViewSharingIds([]);
-			return [];
+			setLoadError('');
+			return { ids: [], permissionStatus: '' };
 		}
-		const ids = await window.electron.ipcRenderer.invoke(
-			IpcEvents.GetDesktopSharingSourceIds,
-			{
-				isEntireScreenToShareChosen,
-			},
-		);
-		setViewSharingIds(ids);
-		return ids;
-	}, [isEntireScreenToShareChosen, isWaylandSession]);
+		try {
+			const response = (await window.electron.ipcRenderer.invoke(
+				IpcEvents.GetDesktopSharingSourceIds,
+				{
+					isEntireScreenToShareChosen,
+				},
+			)) as DesktopSharingSourcesResponse | string[];
+
+			const ids = Array.isArray(response) ? response : response.ids;
+			const status = Array.isArray(response)
+				? ''
+				: (response.screenCaptureStatus ?? '');
+			const error = Array.isArray(response) ? '' : (response.error ?? '');
+			const working = Array.isArray(response)
+				? ids.length > 0
+				: (response.captureWorking ?? ids.length > 0);
+
+			setViewSharingIds(ids);
+			setScreenCaptureStatus(status);
+			setCaptureWorking(working);
+			setLoadError(error);
+			return { ids, permissionStatus: status };
+		} catch (e) {
+			const message =
+				e instanceof Error ? e.message : t('failed-to-load-sharing-sources');
+			setViewSharingIds([]);
+			setLoadError(message);
+			return { ids: [], permissionStatus: '' };
+		}
+	}, [isEntireScreenToShareChosen, isWaylandSession, t]);
 
 	const handleRefreshSourcesWithLoading = useCallback(async (): Promise<
 		string[]
 	> => {
 		setIsLoading(true);
 		try {
-			const ids = await handleRefreshSources();
+			const { ids } = await handleRefreshSources();
 			return ids;
 		} finally {
 			setIsLoading(false);
 		}
 	}, [handleRefreshSources]);
 
+	const handleOpenScreenCaptureSettings = useCallback(() => {
+		void window.electron.ipcRenderer.invoke(IpcEvents.OpenScreenCaptureSettings);
+	}, []);
+
 	useEffect(() => {
 		if (!isChooseAppOrScreenOverlayOpen || isWaylandSession) {
 			setIsLoading(false);
 			setViewSharingIds([]);
+			setLoadError('');
+			setScreenCaptureStatus('');
+			setCaptureWorking(null);
 			return;
 		}
 
 		let cancelled = false;
 		let attempts = 0;
-		const maxAttempts = 8; // ~3.2s total if retryDelayMs = 400
-		const retryDelayMs = 400;
+		const maxAttempts = 20;
+		const retryDelayMs = 500;
 
 		setIsLoading(true);
 
 		const attemptLoad = async () => {
-			const ids = await handleRefreshSources();
+			const { ids, permissionStatus } = await handleRefreshSources();
 			if (cancelled) return;
-			if (ids.length > 0 || attempts >= maxAttempts) {
+			if (
+				ids.length > 0 ||
+				attempts >= maxAttempts ||
+				permissionStatus === 'denied' ||
+				permissionStatus === 'restricted'
+			) {
 				setIsLoading(false);
 				return;
 			}
@@ -120,6 +177,53 @@ export default function ChooseAppOrScreenOverlay(
 			setIsLoading(false);
 		};
 	}, [isChooseAppOrScreenOverlayOpen, handleRefreshSources, isWaylandSession]);
+
+	const needsScreenCapturePermission =
+		screenCaptureStatus === 'denied' && captureWorking === false;
+
+	const needsAppRestart =
+		screenCaptureStatus !== 'denied' &&
+		captureWorking === false &&
+		viewSharingIds.length === 0;
+
+	const renderEmptyState = () => {
+		if (viewSharingIds.length > 0) {
+			return null;
+		}
+
+		return (
+			<div className={classes.emptyState}>
+				{needsScreenCapturePermission ? (
+					<Callout intent="warning" title={t('screen-recording-permission-required')}>
+						<Text>{t('screen-recording-permission-instructions')}</Text>
+						<div style={{ marginTop: '12px' }}>
+							<Button intent="primary" onClick={handleOpenScreenCaptureSettings}>
+								{t('open-screen-recording-settings')}
+							</Button>
+						</div>
+					</Callout>
+				) : needsAppRestart ? (
+					<Callout intent="warning" title={t('screen-recording-restart-required')}>
+						<Text>{t('screen-recording-restart-instructions')}</Text>
+					</Callout>
+				) : (
+					<Callout intent="primary" title={t('no-sharing-sources-found')}>
+						<Text>
+							{isEntireScreenToShareChosen
+								? t('no-screens-found-instructions')
+								: t('no-windows-found-instructions')}
+						</Text>
+					</Callout>
+				)}
+				{loadError ? (
+					<Text className="bp3-text-muted">{loadError}</Text>
+				) : null}
+				<Button icon="refresh" intent="warning" onClick={handleRefreshSourcesWithLoading}>
+					{t('refresh')}
+				</Button>
+			</div>
+		);
+	};
 
 	return (
 		<Dialog
@@ -243,22 +347,26 @@ export default function ChooseAppOrScreenOverlay(
 								height: '100%',
 							}}
 						>
-							<Row>
-								<div className={classes.sharePreviewsContainer}>
-									<PreviewGridList
-										viewSharingIds={viewSharingIds}
-										isEntireScreen={isEntireScreenToShareChosen}
-										handleNextEntireScreen={() => {
-											handleNextEntireScreen();
-											handleClose();
-										}}
-										handleNextApplicationWindow={() => {
-											handleNextApplicationWindow();
-											handleClose();
-										}}
-									/>
-								</div>
-							</Row>
+							{viewSharingIds.length > 0 ? (
+								<Row>
+									<div className={classes.sharePreviewsContainer}>
+										<PreviewGridList
+											viewSharingIds={viewSharingIds}
+											isEntireScreen={isEntireScreenToShareChosen}
+											handleNextEntireScreen={() => {
+												handleNextEntireScreen();
+												handleClose();
+											}}
+											handleNextApplicationWindow={() => {
+												handleNextApplicationWindow();
+												handleClose();
+											}}
+										/>
+									</div>
+								</Row>
+							) : (
+								renderEmptyState()
+							)}
 						</div>
 					)}
 				</div>

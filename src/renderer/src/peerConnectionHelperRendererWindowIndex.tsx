@@ -52,6 +52,7 @@ export function handleIpcRenderer(): void {
 					data.user,
 					port,
 				);
+				window.__deskreenPeerConnection = peerConnection;
 
 				peerConnection.setOnDeviceConnectedCallback((deviceData) => {
 					window.electron.ipcRenderer.send('peer-connected', deviceData);

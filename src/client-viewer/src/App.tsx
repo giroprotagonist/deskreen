@@ -9,6 +9,7 @@ import {
 	getGaTagIdFromMeta,
 	updateAnalyticsConsent,
 } from './utils/analytics';
+import isReceiverMode from './utils/isReceiverMode';
 
 const App: React.FC = () => {
 	// Helper function to check for prerendering safely
@@ -64,6 +65,12 @@ const App: React.FC = () => {
 
 	useEffect(() => {
 		if (!isTrulyVisible) {
+			return;
+		}
+
+		if (isReceiverMode()) {
+			setConsentStatus('opted-out');
+			setHasConsent(true);
 			return;
 		}
 

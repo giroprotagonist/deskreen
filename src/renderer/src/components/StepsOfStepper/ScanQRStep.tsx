@@ -306,37 +306,21 @@ const ScanQRStep: React.FC = () => {
 				</Tooltip>
 			</Row>
 			{!isQrInteractive && (
-				<>
-					<Row
-						style={{
-							marginTop: '12px',
-							marginBottom: '6px',
-							display: 'flex',
-							flexDirection: 'row',
-							alignItems: 'center',
-							justifyContent: 'center',
-							textAlign: 'center',
-						}}
-					>
-						<Text className="bp3-text-muted">
-							{t('deskreen-ce-allows-only-one-client-at-same-time')}
-						</Text>
-					</Row>
-					<Row
-						style={{
-							marginBottom: '10px',
-							display: 'flex',
-							flexDirection: 'row',
-							alignItems: 'center',
-							justifyContent: 'center',
-							textAlign: 'center',
-						}}
-					>
-						<Text className="bp3-text-muted">
-							{t('this-will-be-available-only-in-pro-version')}
-						</Text>
-					</Row>
-				</>
+				<Row
+					style={{
+						marginTop: '12px',
+						marginBottom: '10px',
+						display: 'flex',
+						flexDirection: 'row',
+						alignItems: 'center',
+						justifyContent: 'center',
+						textAlign: 'center',
+					}}
+				>
+					<Text className="bp3-text-muted">
+						{t('deskreen-ce-allows-only-one-client-at-same-time')}
+					</Text>
+				</Row>
 			)}
 
 			<Dialog

@@ -1,6 +1,7 @@
 import { IpcEvents } from '../../../../common/IpcEvents.enum';
 import NullSimplePeer from './NullSimplePeer';
 import NullUser from './NullUser';
+import setHostCaptureSessionActive from './setHostCaptureSessionActive';
 
 export default function handleSelfDestroy(
 	peerConnection: PeerConnection,
@@ -34,6 +35,7 @@ export default function handleSelfDestroy(
 
 	// cleanup media stream
 	if (peerConnection.localStream) {
+		void setHostCaptureSessionActive(false);
 		peerConnection.localStream.getTracks().forEach((track) => {
 			track.stop();
 		});
@@ -52,6 +54,9 @@ export default function handleSelfDestroy(
 		// reset callback after destruction
 	};
 	peerConnection.isCallStarted = false;
+	peerConnection.pendingCallPeer = false;
+	peerConnection.sentCallSignalCount = 0;
+	peerConnection.signalsDataToCallUser = [];
 
 	window.electron.ipcRenderer.invoke(
 		IpcEvents.UnmarkRoomIDAsTaken,

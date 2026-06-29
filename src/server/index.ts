@@ -23,6 +23,8 @@ import getStore from './store';
 import { getDeskreenGlobal } from '../main/helpers/getDeskreenGlobal';
 import getMyLocalIpV4 from '../main/helpers/getMyLocalIpV4';
 import { getClientViewerDistPath } from './getClientViewerDistPath';
+import getScreenCapturePermissionStatus from '../main/utils/getScreenCapturePermissionStatus';
+import SharingSessionStatusEnum from '../features/SharingSessionService/SharingSessionStatusEnum';
 
 const { hostname, primaryPort, backupPort } = config;
 
@@ -69,7 +71,7 @@ function setStaticFileHeaders(
 		'Referrer-Policy': 'no-referrer',
 		'Feature-Policy':
 			"geolocation 'none'; vr 'none'; payment 'none'; microphone 'none'",
-		// 'Cache-Control': 'max-age=0', // make browser get fresh files and make new connection when client connected
+		'Cache-Control': 'no-store, no-cache, must-revalidate',
 	});
 }
 
@@ -113,6 +115,44 @@ class DeskreenSignalingServer {
 		const router = new Router();
 
 		this.app.use(cors());
+		router.get('/api/discover.json', (ctx) => {
+			const deskreenGlobal = getDeskreenGlobal();
+			const roomId =
+				deskreenGlobal.sharingSessionService.waitingForConnectionSharingSession
+					?.roomID ?? '';
+			const shareBase = `http://${this.hostname}:${this.port}/${roomId}`;
+			ctx.set('Access-Control-Allow-Origin', '*');
+			ctx.type = 'application/json';
+			ctx.body = {
+				name: 'Deskreen CE',
+				ready: roomId !== '',
+				roomId,
+				host: this.hostname,
+				port: this.port,
+				shareUrl: roomId !== '' ? `${shareBase}?receiver=1` : null,
+			};
+		});
+		router.get('/api/health.json', (ctx) => {
+			const deskreenGlobal = getDeskreenGlobal();
+			const sharingSessions = [
+				...deskreenGlobal.sharingSessionService.sharingSessions.values(),
+			];
+			const activeSharingCount = sharingSessions.filter(
+				(session) => session.status === SharingSessionStatusEnum.SHARING,
+			).length;
+			ctx.set('Access-Control-Allow-Origin', '*');
+			ctx.type = 'application/json';
+			ctx.body = {
+				captureActive:
+					deskreenGlobal.desktopCapturerSourcesService.isCaptureSessionActive(),
+				permission: getScreenCapturePermissionStatus(),
+				sharingSessionCount: sharingSessions.length,
+				activeSharingCount,
+				ready:
+					(deskreenGlobal.sharingSessionService
+						.waitingForConnectionSharingSession?.roomID ?? '') !== '',
+			};
+		});
 		this.app.use(router.routes());
 
 		const clientDistDirectory = this.clientDistDirectory;

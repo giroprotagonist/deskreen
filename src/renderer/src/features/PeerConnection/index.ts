@@ -1,6 +1,8 @@
 import { prepare as prepareMessage } from '../../utils/message';
 import { connectSocket } from '../../../../common/connectSocket';
-import handleCreatePeer from './handleCreatePeer';
+import handleCreatePeer, {
+	attachCaptureTrackEndedHandler,
+} from './handleCreatePeer';
 import handleSocket from './handleSocket';
 import { handleRecieveEncryptedMessage } from '../../utils/handleRecieveEncryptedMessage';
 import handleSelfDestroy from './handleSelfDestroy';
@@ -44,7 +46,9 @@ export default class PeerConnection {
 		deviceScreenHeight: 0,
 	} as Device;
 	signalsDataToCallUser: string[];
+	sentCallSignalCount: number;
 	isCallStarted: boolean;
+	pendingCallPeer: boolean;
 	onDeviceConnectedCallback: (device: Device) => void;
 	displayID: string;
 	sourceDisplaySize: DisplaySize | undefined;
@@ -64,7 +68,9 @@ export default class PeerConnection {
 		this.partner = NullUser;
 		this.desktopCapturerSourceID = '';
 		this.signalsDataToCallUser = [];
+		this.sentCallSignalCount = 0;
 		this.isCallStarted = false;
+		this.pendingCallPeer = false;
 		this.localStream = null;
 		this.displayID = '';
 		this.sourceDisplaySize = undefined;
@@ -186,6 +192,7 @@ export default class PeerConnection {
 				// update local stream reference to the new stream
 				// the new stream's track is now being used in the peer connection
 				this.localStream = newStream;
+				attachCaptureTrackEndedHandler(this, newVideoTrack);
 
 				// update sourceDisplaySize from actual stream to ensure correct resolution
 				// this is critical when switching sources to get the actual stream dimensions
@@ -282,17 +289,25 @@ export default class PeerConnection {
 
 	callPeer(): void {
 		if (process.env.RUN_MODE === 'test') return;
-		if (this.isCallStarted) return;
-		this.isCallStarted = true;
+		this.pendingCallPeer = true;
+		this.flushPendingCallSignals();
+	}
 
-		this.signalsDataToCallUser.forEach((data: string) => {
-			this.sendEncryptedMessage({
+	flushPendingCallSignals(): void {
+		if (!this.pendingCallPeer) return;
+		if (process.env.RUN_MODE === 'test') return;
+
+		while (this.sentCallSignalCount < this.signalsDataToCallUser.length) {
+			const data = this.signalsDataToCallUser[this.sentCallSignalCount];
+			this.sentCallSignalCount += 1;
+			this.isCallStarted = true;
+			void this.sendEncryptedMessage({
 				type: 'CALL_USER',
 				payload: {
 					signalData: data,
 				},
 			});
-		});
+		}
 	}
 
 	createPeer(): Promise<void> {

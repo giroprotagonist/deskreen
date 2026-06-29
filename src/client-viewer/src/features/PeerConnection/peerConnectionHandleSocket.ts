@@ -31,17 +31,39 @@ export function getMyIPCallback(
 export default (peerConnection: PeerConnection) => {
 	let disconnectCount = 0;
 	let isAllowed = true;
+	let streamDisconnectGraceTimeout: ReturnType<typeof setTimeout> | null = null;
 	const socket = peerConnection.socket;
 	if (!socket) {
 		throw new PeerConnectionSocketNotDefined();
 	}
 
+	const clearStreamDisconnectGrace = () => {
+		if (streamDisconnectGraceTimeout) {
+			clearTimeout(streamDisconnectGraceTimeout);
+			streamDisconnectGraceTimeout = null;
+		}
+	};
+
 	socket.on('disconnect', () => {
 		disconnectCount++;
-		// handle disconnect even when stream is started - stop stream and show error
-		if (peerConnection.isStreamStarted && disconnectCount >= 1) {
-			peerConnection.stopStream();
-			setAndShowErrorDialogMessage(peerConnection, ErrorMessage.DISCONNECTED);
+		// Brief socket reconnects are common; do not white-screen the viewer instantly.
+		if (peerConnection.isStreamStarted) {
+			if (!streamDisconnectGraceTimeout) {
+				streamDisconnectGraceTimeout = setTimeout(() => {
+					streamDisconnectGraceTimeout = null;
+					if (!peerConnection.isStreamStarted) {
+						return;
+					}
+					if (peerConnection.socket?.connected) {
+						return;
+					}
+					peerConnection.stopStream();
+					setAndShowErrorDialogMessage(
+						peerConnection,
+						ErrorMessage.DISCONNECTED,
+					);
+				}, 8000);
+			}
 			return;
 		}
 		// for pre-stream disconnects, wait for sustained disconnection before showing error
@@ -51,6 +73,7 @@ export default (peerConnection: PeerConnection) => {
 	});
 
 	socket.on('connect', () => {
+		clearStreamDisconnectGrace();
 		let ipCallbackReceived = false;
 
 		// clear any existing reconnect timeout
@@ -100,13 +123,20 @@ export default (peerConnection: PeerConnection) => {
 
 		if (!peerConnection.partner) return;
 
+		const userAgent = window.navigator.userAgent;
+		const isDeskreenReceiverApp = userAgent.includes('DeskreenReceiver');
+
 		peerConnection.sendEncryptedMessage({
 			type: 'DEVICE_DETAILS',
 			// TODO: add deviceIP in this payload
 			payload: {
 				os: peerConnection.myDeviceDetails.myOS,
-				deviceType: peerConnection.myDeviceDetails.myDeviceType,
-				browser: peerConnection.myDeviceDetails.myBrowser,
+				deviceType: isDeskreenReceiverApp
+					? 'tablet'
+					: peerConnection.myDeviceDetails.myDeviceType,
+				browser: isDeskreenReceiverApp
+					? 'DeskreenReceiver'
+					: peerConnection.myDeviceDetails.myBrowser,
 				deviceScreenWidth: window.screen.width,
 				deviceScreenHeight: window.screen.height,
 			},

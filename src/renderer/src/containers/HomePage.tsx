@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Classes } from '@blueprintjs/core';
 import { ToastProvider, DefaultToast } from 'react-toast-notifications';
 
@@ -29,6 +29,20 @@ export const CustomToastWithTheme = ({
 	);
 };
 
+async function disconnectAllActiveSharingSessions(): Promise<void> {
+	const devices: Device[] = await window.electron.ipcRenderer.invoke(
+		IpcEvents.GetConnectedDevices,
+	);
+	await Promise.all(
+		devices.map((device) =>
+			window.electron.ipcRenderer.invoke(
+				IpcEvents.DisconnectPeerAndDestroySharingSessionBySessionID,
+				device.sharingSessionID,
+			),
+		),
+	);
+}
+
 export default function HomePage(): React.ReactElement {
 	console.log('window.api', window.api);
 	const [activeStep, setActiveStep] = useState(0);
@@ -36,9 +50,54 @@ export default function HomePage(): React.ReactElement {
 	const [isUserAllowedConnection, setIsUserAllowedConnection] = useState(false);
 	const [pendingConnectionDevice, setPendingConnectionDevice] =
 		useState<Device | null>(null);
+	const [isCastingActive, setIsCastingActive] = useState(false);
+
+	const syncCastingState = useCallback(async (): Promise<void> => {
+		const devices: Device[] = await window.electron.ipcRenderer.invoke(
+			IpcEvents.GetConnectedDevices,
+		);
+		setIsCastingActive(devices.length > 0);
+	}, []);
+
+	useEffect(() => {
+		void syncCastingState();
+
+		const handleAvailabilityChange = (
+			_: unknown,
+			payload: { isAvailable: boolean },
+		): void => {
+			if (!payload?.isAvailable) {
+				setIsCastingActive(true);
+				return;
+			}
+			void syncCastingState();
+		};
+
+		window.electron.ipcRenderer.on(
+			IpcEvents.ViewerConnectionAvailabilityChanged,
+			handleAvailabilityChange,
+		);
+
+		return () => {
+			window.electron.ipcRenderer.removeListener(
+				IpcEvents.ViewerConnectionAvailabilityChanged,
+				handleAvailabilityChange,
+			);
+		};
+	}, [syncCastingState]);
+
+	const handleSharingStarted = useCallback((): void => {
+		setIsCastingActive(true);
+		setActiveStep(0);
+		setPendingConnectionDevice(null);
+		setIsUserAllowedConnection(false);
+		setIsAllowDeviceAlertOpen(false);
+	}, []);
 
 	const handleResetWithSharingSessionRestart =
 		useCallback(async (): Promise<void> => {
+			await disconnectAllActiveSharingSessions();
+			setIsCastingActive(false);
 			setActiveStep(0);
 			setPendingConnectionDevice(null);
 			setIsUserAllowedConnection(false);
@@ -70,6 +129,8 @@ export default function HomePage(): React.ReactElement {
 					pendingConnectionDevice={pendingConnectionDevice}
 					setPendingConnectionDevice={setPendingConnectionDevice}
 					handleReset={handleResetWithSharingSessionRestart}
+					isCastingActive={isCastingActive}
+					onSharingStarted={handleSharingStarted}
 				/>
 			</div>
 		</ToastProvider>

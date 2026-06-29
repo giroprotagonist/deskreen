@@ -6,7 +6,7 @@ import {
 overrideGlobalConsole();
 startConsoleRateLimiting();
 
-import { app, shell, BrowserWindow, Notification } from 'electron';
+import { app, shell, BrowserWindow, Notification, dialog, desktopCapturer } from 'electron';
 import { join } from 'path';
 import { is, optimizer } from '@electron-toolkit/utils';
 import icon from '../../resources/icon.png?asset';
@@ -96,6 +96,11 @@ import { initGlobals } from './helpers/initGlobals';
 import { ElectronStoreKeys } from '../common/ElectronStoreKeys.enum';
 import { getDeskreenGlobal } from './helpers/getDeskreenGlobal';
 import { startLogBufferCleanup } from './utils/LoggerWithFilePrefix';
+import configureScreenCaptureSession, {
+	probeScreenCaptureAccess,
+	requestScreenCaptureAccessOnStartup,
+} from './helpers/configureScreenCaptureSession';
+import getScreenCapturePermissionStatus from './utils/getScreenCapturePermissionStatus';
 
 const resolvePreloadScriptPath = (entry: 'index' | 'helperRenderer'): string => {
 	const baseDir = join(__dirname, '../preload');
@@ -136,10 +141,14 @@ export default class DeskreenApp {
 				app.setActivationPolicy('regular');
 			}
 
+			configureScreenCaptureSession();
+			await requestScreenCaptureAccessOnStartup();
+
 			// start log buffer cleanup to prevent memory bloat
 			startLogBufferCleanup();
 
 			await this.createWindow();
+			await this.ensureScreenCapturePermissionPrompt();
 
 			void this.checkForLatestVersionAndNotify();
 		});
@@ -161,6 +170,36 @@ export default class DeskreenApp {
 			'webrtc-max-cpu-consumption-percentage',
 			'100',
 		);
+	}
+
+	private async ensureScreenCapturePermissionPrompt(): Promise<void> {
+		if (process.platform !== 'darwin' || !this.mainWindow) {
+			return;
+		}
+
+		const hasAccess = await probeScreenCaptureAccess();
+		if (hasAccess || getScreenCapturePermissionStatus() === 'granted') {
+			return;
+		}
+
+		const { response } = await dialog.showMessageBox(this.mainWindow, {
+			type: 'warning',
+			title: i18n.t('screen-recording-permission-required'),
+			message: i18n.t('screen-recording-permission-instructions'),
+			detail: i18n.t('screen-recording-restart-instructions'),
+			buttons: [
+				i18n.t('open-screen-recording-settings'),
+				i18n.t('continue'),
+			],
+			defaultId: 0,
+			cancelId: 1,
+		});
+
+		if (response === 0) {
+			await shell.openExternal(
+				'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
+			);
+		}
 	}
 
 	private async checkForLatestVersionAndNotify(): Promise<void> {
@@ -345,4 +384,33 @@ export default class DeskreenApp {
 }
 
 export const deskreenApp = new DeskreenApp();
-deskreenApp.start();
+
+if (process.argv.includes('--probe-screen-capture')) {
+	configureScreenCaptureSession();
+	void app.whenReady().then(async () => {
+		process.stdout.write(
+			`[deskreen-probe] screen-permission: ${getScreenCapturePermissionStatus()}\n`,
+		);
+		try {
+			const sources = await desktopCapturer.getSources({
+				types: ['screen', 'window'],
+				thumbnailSize: { width: 100, height: 100 },
+			});
+			process.stdout.write(
+				`[deskreen-probe] sources-count: ${sources.length}\n`,
+			);
+			for (const source of sources.slice(0, 8)) {
+				process.stdout.write(`[deskreen-probe] source: ${source.name}\n`);
+			}
+		} catch (error) {
+			process.stdout.write(`[deskreen-probe] getSources-error: ${error}\n`);
+		}
+		app.exit(0);
+	});
+	setTimeout(() => {
+		process.stdout.write('[deskreen-probe] timed out waiting for app ready\n');
+		app.exit(1);
+	}, 15000);
+} else {
+	deskreenApp.start();
+}

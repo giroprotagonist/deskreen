@@ -22,6 +22,7 @@ const SharingSourcePreviewCard: React.FC<SharingSourcePreviewCardProps> = (
 	const [sourceName, setSourceName] = useState('');
 	const [appIconSourceImage, setAppIconSourceImage] = useState('');
 	const [isHovered, setIsHovered] = useState(false);
+	const [loadFailed, setLoadFailed] = useState(false);
 	const { t } = useTranslation();
 	const rootRef = useRef<HTMLDivElement | null>(null);
 	const [isVisible, setIsVisible] = useState(false);
@@ -44,27 +45,54 @@ const SharingSourcePreviewCard: React.FC<SharingSourcePreviewCardProps> = (
 
 	useEffect(() => {
 		if (!isVisible) return;
-		const timer = setTimeout(async () => {
-			if (!sharingSourceID) return;
-			const sources = await window.electron.ipcRenderer.invoke(
-				IpcEvents.GetDesktopCapturerServiceSourcesByIds,
-				[sharingSourceID],
-			);
+		let cancelled = false;
+		setLoadFailed(false);
 
-			const data = sources?.[sharingSourceID];
-			if (data) {
-				setSourceImage((data?.source.thumbnail as unknown as string) || '');
-				if (data?.source.appIcon != null) {
-					setAppIconSourceImage(
-						(data?.source.appIcon as unknown as string) || '',
-					);
+		const timer = setTimeout(async () => {
+			if (!sharingSourceID || cancelled) return;
+			try {
+				const sources = await window.electron.ipcRenderer.invoke(
+					IpcEvents.GetDesktopCapturerServiceSourcesByIds,
+					[sharingSourceID],
+				);
+
+				if (cancelled) return;
+				const data = sources?.[sharingSourceID];
+				if (data) {
+					setSourceImage((data?.source.thumbnail as unknown as string) || '');
+					if (data?.source.appIcon != null) {
+						setAppIconSourceImage(
+							(data?.source.appIcon as unknown as string) || '',
+						);
+					}
+					setSourceName(data?.source.name || t('failed-to-get-source-name'));
+				} else {
+					setLoadFailed(true);
+					setSourceName(t('failed-to-get-source-name'));
 				}
-				setSourceName(data?.source.name || t('failed-to-get-source-name'));
+			} catch {
+				if (!cancelled) {
+					setLoadFailed(true);
+					setSourceName(t('failed-to-get-source-name'));
+				}
 			}
 		}, 200);
 
-		return () => clearTimeout(timer);
-	}, [isVisible, sharingSourceID]);
+		const failTimer = setTimeout(() => {
+			if (!cancelled) {
+				setLoadFailed(true);
+				setSourceName((current) =>
+					current === '' ? t('failed-to-get-source-name') : current,
+				);
+			}
+		}, 8000);
+
+		return () => {
+			cancelled = true;
+			clearTimeout(timer);
+			clearTimeout(failTimer);
+		};
+	}, [isVisible, sharingSourceID, t]);
 
 	return (
 		<div ref={rootRef}>
@@ -124,6 +152,8 @@ const SharingSourcePreviewCard: React.FC<SharingSourcePreviewCardProps> = (
 									<> </>
 								)}
 							</>
+						) : loadFailed ? (
+							<Text className="bp3-text-muted">{t('failed-to-get-source-name')}</Text>
 						) : (
 							<Spinner size={60} />
 						)}

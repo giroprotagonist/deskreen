@@ -1,0 +1,15 @@
+<resources>
+	<string name="app_name">Deskreen Receiver</string>
+	<string name="connect">Connect</string>
+	<string name="url_hint">http://192.168.x.x:3131/room-id</string>
+	<string name="url_label">Deskreen URL from your Mac</string>
+	<string name="saved_url">Saved URL</string>
+	<string name="searching_for_deskreen">Looking for Deskreen on your Wi‑Fi…</string>
+	<string name="connecting_to_deskreen">Connecting to your Mac…</string>
+	<string name="manual_connect_hint">Could not find Deskreen automatically. Scan the QR code on your Mac, or paste the URL below.</string>
+	<string name="scan_qr_code">Scan QR code</string>
+	<string name="scan_qr_hint">Point your camera at the QR code on your Mac</string>
+	<string name="camera_permission_required">Camera access is needed to scan the QR code.</string>
+	<string name="cancel">Cancel</string>
+	<string name="open_in_chrome">Open in Chrome (more stable)</string>
+</resources>

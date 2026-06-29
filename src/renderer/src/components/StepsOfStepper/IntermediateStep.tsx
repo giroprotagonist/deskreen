@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import ScanQRStep from './ScanQRStep';
 import ChooseAppOrScreenStep from './ChooseAppOrScreenStep';
 import ConfirmStep from './ConfirmStep';
+import SuccessStep from './SuccessStep';
 import { Device } from '../../../../common/Device';
 import { IpcEvents } from '../../../../common/IpcEvents.enum';
 
@@ -18,6 +19,8 @@ interface IntermediateStepProps {
 	resetUserAllowedConnection: () => void;
 	connectedDevice: Device | null;
 	handleReset: () => void;
+	isCastingActive: boolean;
+	onSharingStarted: () => void;
 }
 
 function getStepContent(
@@ -26,7 +29,13 @@ function getStepContent(
 	handleNextEntireScreen: () => void,
 	handleNextApplicationWindow: () => void,
 	connectedDevice: Device | null,
+	isCastingActive: boolean,
+	handleReset: () => void,
 ): React.ReactNode {
+	if (stepIndex === 0 && isCastingActive) {
+		return <SuccessStep handleReset={handleReset} />;
+	}
+
 	switch (stepIndex) {
 		case 0:
 			return <ScanQRStep />;
@@ -72,6 +81,8 @@ export default function IntermediateStep(
 		resetUserAllowedConnection,
 		connectedDevice,
 		handleReset,
+		isCastingActive,
+		onSharingStarted,
 	} = props;
 
 	return (
@@ -92,6 +103,8 @@ export default function IntermediateStep(
 				handleNextEntireScreen,
 				handleNextApplicationWindow,
 				connectedDevice,
+				isCastingActive,
+				handleReset,
 			)}
 			{process.env.NODE_ENV === 'production' &&
 			process.env.RUN_MODE !== 'dev' &&
@@ -108,22 +121,24 @@ export default function IntermediateStep(
 			) : (
 				<></>
 			)}
-			{activeStep !== 0 ? (
+			{activeStep !== 0 && !isCastingActive ? (
 				<Row>
 					<Col xs={12}>
 						<Button
 							intent={activeStep === 2 ? 'success' : 'none'}
 							onClick={async () => {
 								if (isConfirmStep(activeStep, steps)) {
-									window.electron.ipcRenderer.invoke(
-										IpcEvents.StartSharingOnWaitingForConnectionSharingSession,
-									);
+									const result =
+										await window.electron.ipcRenderer.invoke(
+											IpcEvents.StartSharingOnWaitingForConnectionSharingSession,
+										);
 									resetPendingConnectionDevice();
 									resetUserAllowedConnection();
+									if (result?.ok) {
+										onSharingStarted();
+									}
+									return;
 								}
-								setTimeout(() => {
-									handleReset();
-								}, 1000);
 							}}
 							style={{
 								display: activeStep === 1 ? 'none' : 'inline',

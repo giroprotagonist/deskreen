@@ -5,6 +5,7 @@ import SharingTypeEnum from './SharingTypeEnum';
 import PeerConnectionHelperRendererService from '../PeerConnectionHelperRendererService';
 import { Device } from '../../common/Device';
 import { LocalPeerUser } from '../../common/LocalPeerUser';
+import { setPreferredDesktopCapturerSourceId } from '../../main/helpers/configureScreenCaptureSession';
 
 export type SharingSessionStatusChangeListener = (
 	sharingSessionID: string,
@@ -91,6 +92,7 @@ export default class SharingSession {
 
 	setDesktopCapturerSourceID(id: string): void {
 		this.desktopCapturerSourceID = id;
+		setPreferredDesktopCapturerSourceId(id);
 		if (process.env.RUN_MODE === 'test') return;
 		this.peerConnectionHelperRenderer?.webContents.send(
 			'set-desktop-capturer-source-id',

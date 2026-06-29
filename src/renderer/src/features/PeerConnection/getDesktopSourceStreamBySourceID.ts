@@ -1,80 +1,34 @@
-async function getStreamWithSource(
-	chromeMediaSource: 'desktop' | 'screen',
-	sourceID: string,
-	width: number | null | undefined,
-	height: number | null | undefined,
-	minSizeMultiplier: number,
-	maxSizeMultiplier: number,
-	minFrameRate: number,
-	maxFrameRate: number,
-): Promise<MediaStream> {
-	if (width && height) {
-		return navigator.mediaDevices.getUserMedia({
-			audio: false,
-			video: {
-				// @ts-ignore: mandatory is supported in chromium but missing in types
-				mandatory: {
-					chromeMediaSource,
-					chromeMediaSourceId: sourceID,
-					minWidth: width * minSizeMultiplier,
-					maxWidth: width * maxSizeMultiplier,
-					minHeight: height * minSizeMultiplier,
-					maxHeight: height * maxSizeMultiplier,
-					minFrameRate,
-					maxFrameRate,
-				},
-			},
-		});
-	}
+import { IpcEvents } from '../../../../common/IpcEvents.enum';
+import setHostCaptureSessionActive from './setHostCaptureSessionActive';
 
-	return navigator.mediaDevices.getUserMedia({
-		audio: false,
-		video: {
-			// @ts-ignore: mandatory is supported in chromium but missing in types
-			mandatory: {
-				chromeMediaSource,
-				chromeMediaSourceId: sourceID,
-				minFrameRate,
-				maxFrameRate,
-			},
-		},
-	});
-}
-
-export default async (
+export default async function getDesktopSourceStreamBySourceID(
 	sourceID: string,
-	width: number | null | undefined = undefined,
-	height: number | null | undefined = undefined,
-	minSizeMultiplier = 1,
-	maxSizeMultiplier = 1,
+	_width: number | null | undefined = undefined,
+	_height: number | null | undefined = undefined,
+	_minSizeMultiplier = 1,
+	_maxSizeMultiplier = 1,
 	minFrameRate = 15,
 	maxFrameRate = 60,
-): Promise<MediaStream> => {
-	try {
-		return await getStreamWithSource(
-			'desktop',
-			sourceID,
-			width,
-			height,
-			minSizeMultiplier,
-			maxSizeMultiplier,
-			minFrameRate,
-			maxFrameRate,
-		);
-	} catch (desktopError) {
-		console.warn(
-			'failed to capture desktop stream, retrying with screen source',
-			desktopError,
-		);
-		return getStreamWithSource(
-			'screen',
-			sourceID,
-			width,
-			height,
-			minSizeMultiplier,
-			maxSizeMultiplier,
-			minFrameRate,
-			maxFrameRate,
+	includeSystemAudio = false,
+): Promise<MediaStream> {
+	const trimmedSourceId = sourceID.trim();
+	if (trimmedSourceId !== '') {
+		await window.electron.ipcRenderer.invoke(
+			IpcEvents.SetPreferredCapturerSourceIdForDisplayMedia,
+			trimmedSourceId,
 		);
 	}
-};
+
+	await setHostCaptureSessionActive(true);
+	try {
+		return await navigator.mediaDevices.getDisplayMedia({
+			video: {
+				frameRate: { min: minFrameRate, ideal: maxFrameRate, max: maxFrameRate },
+			},
+			audio: includeSystemAudio,
+		});
+	} catch (error) {
+		await setHostCaptureSessionActive(false);
+		throw error;
+	}
+}

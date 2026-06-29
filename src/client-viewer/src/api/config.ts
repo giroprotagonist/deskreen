@@ -1,12 +1,6 @@
-let host;
-let protocol;
-let port;
-
-if (!host && !protocol && !port) {
-	host = window.location.host.split(':')[0];
-	protocol = 'http';
-	port = 3131;
-}
+const host = window.location.hostname;
+const protocol = window.location.protocol.replace(':', '') || 'http';
+const port = window.location.port || '3131';
 
 export default {
 	host,

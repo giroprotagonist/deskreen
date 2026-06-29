@@ -1,7 +1,5 @@
 import DesktopCapturerSourceType from '../../../../common/DesktopCapturerSourceType';
-import getDesktopSourceStreamBySourceID from './getDesktopSourceStreamBySourceID';
 import prepareDataMessageToSendScreenSourceType from './prepareDataMessageToSendScreenSourceType';
-import NullSimplePeer from './NullSimplePeer';
 
 export default async function handlePeerOnData(
 	peerConnection: PeerConnection,
@@ -10,48 +8,26 @@ export default async function handlePeerOnData(
 	const dataJSON = JSON.parse(data);
 
 	if (dataJSON.type === 'set_video_quality') {
-		const maxVideoQualityMultiplier = dataJSON.payload.value;
-		const minVideoQualityMultiplier =
-			maxVideoQualityMultiplier === 1 ? 0.5 : maxVideoQualityMultiplier;
-
-		if (
-			!peerConnection.desktopCapturerSourceID.includes(
-				DesktopCapturerSourceType.SCREEN,
-			)
-		)
+		// getDisplayMedia capture cannot apply the legacy chromeMediaSource
+		// resolution multipliers. Recreating the stream only stops the live track
+		// and caused white-screen crashes on the tablet viewer.
+		const videoTrack = peerConnection.localStream?.getVideoTracks()[0];
+		if (!videoTrack) {
 			return;
-
-		const newStream = await getDesktopSourceStreamBySourceID(
-			peerConnection.desktopCapturerSourceID,
-			peerConnection.sourceDisplaySize?.width,
-			peerConnection.sourceDisplaySize?.height,
-			minVideoQualityMultiplier,
-			maxVideoQualityMultiplier,
-			60,
-			60,
-		);
-		const newVideoTrack = newStream.getVideoTracks()[0];
-		const oldStream = peerConnection.localStream;
-		const oldTrack = oldStream?.getVideoTracks()[0];
-
-		if (oldTrack && oldStream && peerConnection.peer !== NullSimplePeer) {
-			await peerConnection.peer.replaceTrack(
-				oldTrack,
-				newVideoTrack,
-				oldStream,
-			);
-			// stop only the old track (it's already removed from the stream by replaceTrack)
-			oldTrack.stop();
-			// stop any remaining tracks in the old stream, but don't stop the new track
-			oldStream.getTracks().forEach((track) => {
-				if (track.id !== newVideoTrack.id) {
-					track.stop();
-				}
-			});
 		}
 
-		// update local stream reference to new stream
-		peerConnection.localStream = newStream;
+		const maxVideoQualityMultiplier = dataJSON.payload.value;
+		if (maxVideoQualityMultiplier >= 1) {
+			return;
+		}
+
+		try {
+			await videoTrack.applyConstraints({
+				frameRate: { max: 30, ideal: 24 },
+			});
+		} catch (error) {
+			console.warn('failed to apply video quality constraints', error);
+		}
 	}
 
 	if (dataJSON.type === 'get_sharing_source_type') {

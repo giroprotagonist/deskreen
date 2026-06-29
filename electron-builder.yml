@@ -31,7 +31,9 @@ mac:
   hardenedRuntime: true
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  extendInfo: []
+  extendInfo:
+    NSScreenCaptureUsageDescription: Deskreen needs screen recording permission to share your screen or application windows.
+    NSAudioCaptureUsageDescription: Deskreen needs permission to capture system audio so viewers can hear sound from your computer.
   notarize: false
 dmg:
   artifactName: ${name}-${version}-${arch}.${ext}

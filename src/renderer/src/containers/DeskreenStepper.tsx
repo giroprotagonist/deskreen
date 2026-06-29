@@ -30,6 +30,7 @@ import AllowConnectionForDeviceAlert from '@renderer/components/AllowConnectionF
 import { useTranslation } from 'react-i18next';
 import { TFunction } from 'i18next';
 import { showMessageFromNewToaster } from '@renderer/utils/showMessageFromNewToaster';
+import { isTrustedReceiverDevice } from '@renderer/utils/isTrustedReceiverDevice';
 
 const useStyles = makeStyles(() =>
 	createStyles({
@@ -63,6 +64,8 @@ interface Props {
 	pendingConnectionDevice: Device | null;
 	setPendingConnectionDevice: (device: Device | null) => void;
 	handleReset: () => void;
+	isCastingActive: boolean;
+	onSharingStarted: () => void;
 }
 
 const DeskreenStepper = ({
@@ -75,6 +78,8 @@ const DeskreenStepper = ({
 	pendingConnectionDevice,
 	setPendingConnectionDevice,
 	handleReset,
+	isCastingActive,
+	onSharingStarted,
 }: Props): ReactNode => {
 	const classes = useStyles();
 	const { t } = useTranslation();
@@ -177,6 +182,45 @@ const DeskreenStepper = ({
 		);
 	}, [handleNext, setIsAllowDeviceAlertOpen, setIsUserAllowedConnection]);
 
+	const handleTrustedReceiverAutoConnect = useCallback(
+		async (device: Device) => {
+			setPendingConnectionDevice(device);
+			setIsAllowDeviceAlertOpen(false);
+			setIsUserAllowedConnection(true);
+
+			await new Promise((resolve) => setTimeout(resolve, 400));
+
+			const result = await window.electron.ipcRenderer.invoke(
+				IpcEvents.AutoConnectTrustedReceiver,
+			);
+
+			if (result?.ok) {
+				onSharingStarted();
+				await showMessageFromNewToaster(t('auto-casting-to-your-tablet'));
+				return;
+			}
+
+			if (
+				result?.reason === 'no-source' ||
+				result?.reason === 'pick-required'
+			) {
+				setActiveStep(1);
+				await showMessageFromNewToaster(t('pick-a-screen-to-start-casting'));
+				return;
+			}
+
+			setIsAllowDeviceAlertOpen(true);
+		},
+		[
+			onSharingStarted,
+			setActiveStep,
+			setIsAllowDeviceAlertOpen,
+			setIsUserAllowedConnection,
+			setPendingConnectionDevice,
+			t,
+		],
+	);
+
 	useEffect(() => {
 		window.electron.ipcRenderer.invoke(
 			IpcEvents.CreateWaitingForConnectionSharingSession,
@@ -186,6 +230,10 @@ const DeskreenStepper = ({
 			_: unknown,
 			device: Device,
 		): void => {
+			if (isTrustedReceiverDevice(device)) {
+				void handleTrustedReceiverAutoConnect(device);
+				return;
+			}
 			setPendingConnectionDevice(device);
 			setIsAllowDeviceAlertOpen(true);
 		};
@@ -201,7 +249,11 @@ const DeskreenStepper = ({
 				handlePendingConnectionDevice,
 			);
 		};
-	}, [setIsAllowDeviceAlertOpen, setPendingConnectionDevice]);
+	}, [
+		handleTrustedReceiverAutoConnect,
+		setIsAllowDeviceAlertOpen,
+		setPendingConnectionDevice,
+	]);
 
 	const handleUserClickedDeviceDisconnectButton =
 		useCallback(async (): Promise<void> => {
@@ -227,6 +279,8 @@ const DeskreenStepper = ({
 					resetUserAllowedConnection={() => setIsUserAllowedConnection(false)}
 					connectedDevice={pendingConnectionDevice}
 					handleReset={handleReset}
+					isCastingActive={isCastingActive}
+					onSharingStarted={onSharingStarted}
 				/>
 			</div>
 		);
@@ -240,6 +294,8 @@ const DeskreenStepper = ({
 		pendingConnectionDevice,
 		setIsUserAllowedConnection,
 		setPendingConnectionDevice,
+		isCastingActive,
+		onSharingStarted,
 	]);
 
 	const renderStepLabelContent = useCallback(

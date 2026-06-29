@@ -21,6 +21,12 @@ import { ElectronStoreKeys } from '../../common/ElectronStoreKeys.enum';
 import { store } from '../../common/deskreen-electron-store';
 import DesktopCapturerSourceType from '../../common/DesktopCapturerSourceType';
 import isLinuxWaylandSession from '../utils/isLinuxWaylandSession';
+import getScreenCapturePermissionStatus from '../utils/getScreenCapturePermissionStatus';
+import waitForPeerStreamReady from './waitForPeerStreamReady';
+import {
+	probeScreenCaptureAccess,
+	setPreferredDesktopCapturerSourceId,
+} from './configureScreenCaptureSession';
 
 export const initIpcMainHandlers = (mainWindow: BrowserWindow): void => {
 	ipcMain.on('client-changed-language', async (_, newLangCode) => {
@@ -388,9 +394,13 @@ export const initIpcMainHandlers = (mainWindow: BrowserWindow): void => {
 		}
 
 		if (sharingSession !== null) {
-			sharingSession.callPeer();
 			sharingSession.setStatus(SharingSessionStatusEnum.SHARING);
+			sharingSessionService.sharingSessions.set(
+				sharingSession.id,
+				sharingSession,
+			);
 			sharingSessionService.waitingForConnectionSharingSession = null;
+			sharingSession.callPeer();
 		}
 
 		connectedDevicesService.resetPendingConnectionDevice();
@@ -398,8 +408,19 @@ export const initIpcMainHandlers = (mainWindow: BrowserWindow): void => {
 
 	ipcMain.handle(
 		IpcEvents.StartSharingOnWaitingForConnectionSharingSession,
-		() => {
+		async () => {
+			const sharingSession =
+				getDeskreenGlobal().sharingSessionService
+					.waitingForConnectionSharingSession;
+			if (!sharingSession?.desktopCapturerSourceID) {
+				return { ok: false, reason: 'no-source' };
+			}
+			const ready = await waitForPeerStreamReady(sharingSession, 120000);
+			if (!ready) {
+				return { ok: false, reason: 'no-source' };
+			}
 			startSharingOnWaitingForConnectionSharingSession();
+			return { ok: true };
 		},
 	);
 
@@ -422,26 +443,215 @@ export const initIpcMainHandlers = (mainWindow: BrowserWindow): void => {
 		IpcEvents.GetDesktopSharingSourceIds,
 		async (_, { isEntireScreenToShareChosen }) => {
 			if (isLinuxWaylandSession) {
-				return [];
+				return { ids: [] as string[], captureWorking: false };
 			}
-			// ensure sources are up to date at request time
+
+			const screenCaptureStatus = getScreenCapturePermissionStatus();
+			if (screenCaptureStatus !== 'granted') {
+				return {
+					ids: [] as string[],
+					screenCaptureStatus,
+					captureWorking: false,
+				};
+			}
+
 			await getDeskreenGlobal().desktopCapturerSourcesService.refreshDesktopCapturerSources();
 
-			if (isEntireScreenToShareChosen === true) {
-				return getDeskreenGlobal()
-					.desktopCapturerSourcesService.getScreenSources()
-					.map((source) => source.id);
-			}
-			return getDeskreenGlobal()
-				.desktopCapturerSourcesService.getAppWindowSources()
-				.map((source) => source.id);
+			const ids =
+				isEntireScreenToShareChosen === true
+					? getDeskreenGlobal()
+							.desktopCapturerSourcesService.getScreenSources()
+							.map((source) => source.id)
+					: getDeskreenGlobal()
+							.desktopCapturerSourcesService.getAppWindowSources()
+							.map((source) => source.id);
+
+			const refreshError =
+				getDeskreenGlobal().desktopCapturerSourcesService.getLastRefreshError();
+
+			const captureWorking =
+				ids.length > 0 ||
+				(await getDeskreenGlobal().desktopCapturerSourcesService.probeScreenCaptureAccess());
+
+			return {
+				ids,
+				screenCaptureStatus,
+				captureWorking,
+				error: refreshError ?? undefined,
+			};
 		},
 	);
 
+	ipcMain.handle(IpcEvents.GetScreenCapturePermissionStatus, () => {
+		return getScreenCapturePermissionStatus();
+	});
+
+	ipcMain.handle(IpcEvents.OpenScreenCaptureSettings, () => {
+		if (process.platform === 'darwin') {
+			void shell.openExternal(
+				'x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture',
+			);
+		}
+	});
+
 	ipcMain.handle(IpcEvents.SetDesktopCapturerSourceId, (_, id) => {
+		setPreferredDesktopCapturerSourceId(id ?? '');
 		getDeskreenGlobal().sharingSessionService.waitingForConnectionSharingSession?.setDesktopCapturerSourceID(
 			id,
 		);
+		if (id) {
+			store.set(ElectronStoreKeys.LastDesktopCapturerSourceId, id);
+		}
+	});
+
+	ipcMain.handle(
+		IpcEvents.SetPreferredCapturerSourceIdForDisplayMedia,
+		(_, id: string) => {
+			setPreferredDesktopCapturerSourceId(id ?? '');
+		},
+	);
+
+	ipcMain.handle(IpcEvents.SetHostCaptureSessionActive, (_, active: boolean) => {
+		getDeskreenGlobal().desktopCapturerSourcesService.setCaptureSessionActive(
+			Boolean(active),
+		);
+	});
+
+	ipcMain.handle(IpcEvents.GetOrPickDefaultSharingSourceId, async () => {
+		await getDeskreenGlobal().desktopCapturerSourcesService.refreshDesktopCapturerSources();
+		const sourcesMap =
+			getDeskreenGlobal().desktopCapturerSourcesService.getSourcesMap();
+
+		const savedId = store.get(ElectronStoreKeys.LastDesktopCapturerSourceId);
+		if (typeof savedId === 'string' && savedId !== '' && sourcesMap.has(savedId)) {
+			return savedId;
+		}
+
+		const screens =
+			getDeskreenGlobal().desktopCapturerSourcesService.getScreenSources();
+		if (screens.length > 0) {
+			return screens[0].id;
+		}
+
+		const windows =
+			getDeskreenGlobal().desktopCapturerSourcesService.getAppWindowSources();
+		if (windows.length > 0) {
+			return windows[0].id;
+		}
+
+		return null;
+	});
+
+	ipcMain.handle(IpcEvents.AutoConnectTrustedReceiver, async () => {
+		const deskreenGlobal = getDeskreenGlobal();
+		const pendingDevice = deskreenGlobal.connectedDevicesService.pendingConnectionDevice;
+		console.error(
+			'[auto-connect] start pendingDeviceId=',
+			pendingDevice.id || '(none)',
+		);
+		if (!pendingDevice.id) {
+			return { ok: false, reason: 'no-pending-device' };
+		}
+
+		const sharingSessions = [
+			...deskreenGlobal.sharingSessionService.sharingSessions.values(),
+		];
+		const activeSession = sharingSessions.find(
+			(session) => session.status === SharingSessionStatusEnum.SHARING,
+		);
+		if (activeSession) {
+			const ready = await waitForPeerStreamReady(activeSession);
+			if (ready) {
+				activeSession.callPeer();
+			}
+			return { ok: ready, reason: ready ? 'already-sharing' : 'no-source' };
+		}
+
+		if (!deskreenGlobal.connectedDevicesService.isSlotAvailable()) {
+			deskreenGlobal.connectedDevicesService.disconnectAllDevices();
+		}
+
+		if (getScreenCapturePermissionStatus() !== 'granted') {
+			const canUseDisplayMedia = await probeScreenCaptureAccess();
+			if (!canUseDisplayMedia) {
+				console.error(
+					'[auto-connect] blocked: screen recording permission not granted',
+				);
+				return { ok: false, reason: 'no-permission' };
+			}
+		}
+
+		await deskreenGlobal.desktopCapturerSourcesService.refreshDesktopCapturerSources();
+		const savedId = store.get(ElectronStoreKeys.LastDesktopCapturerSourceId);
+		const sourcesMap =
+			deskreenGlobal.desktopCapturerSourcesService.getSourcesMap();
+
+		if (typeof savedId !== 'string' || savedId === '' || !sourcesMap.has(savedId)) {
+			const screens =
+				deskreenGlobal.desktopCapturerSourcesService.getScreenSources();
+			if (screens.length === 0) {
+				const canUseDisplayMedia = await probeScreenCaptureAccess();
+				if (!canUseDisplayMedia) {
+					return { ok: false, reason: 'no-source' };
+				}
+			}
+		}
+
+		const waitingSession =
+			deskreenGlobal.sharingSessionService.waitingForConnectionSharingSession;
+		if (!waitingSession) {
+			return { ok: false, reason: 'no-waiting-session' };
+		}
+
+		let pickedSourceId = '';
+		if (
+			typeof savedId === 'string' &&
+			savedId !== '' &&
+			sourcesMap.has(savedId)
+		) {
+			pickedSourceId = savedId;
+		} else {
+			const screens =
+				deskreenGlobal.desktopCapturerSourcesService.getScreenSources();
+			if (screens.length > 0) {
+				pickedSourceId = screens[0].id;
+			} else {
+				const windows =
+					deskreenGlobal.desktopCapturerSourcesService.getAppWindowSources();
+				if (windows.length > 0) {
+					pickedSourceId = windows[0].id;
+				}
+			}
+		}
+
+		waitingSession.setDesktopCapturerSourceID(pickedSourceId);
+
+		const ready = await waitForPeerStreamReady(waitingSession, 120000);
+		if (!ready) {
+			const screenCount =
+				deskreenGlobal.desktopCapturerSourcesService.getScreenSources().length;
+			console.error(
+				`[auto-connect] stream not ready sourceId=${pickedSourceId || 'display-media'} screens=${screenCount} permission=${getScreenCapturePermissionStatus()}`,
+			);
+			return {
+				ok: false,
+				reason: pickedSourceId === '' ? 'no-source' : 'pick-required',
+			};
+		}
+
+		waitingSession.setStatus(SharingSessionStatusEnum.CONNECTED);
+
+		if (pickedSourceId !== '') {
+			store.set(ElectronStoreKeys.LastDesktopCapturerSourceId, pickedSourceId);
+		}
+
+		startSharingOnWaitingForConnectionSharingSession();
+
+		console.error(
+			`[auto-connect] success sourceId=${pickedSourceId || 'display-media'}`,
+		);
+
+		return { ok: true, sourceId: pickedSourceId || 'display-media' };
 	});
 
 	ipcMain.handle(IpcEvents.GetIsFirstTimeAppStart, () => {

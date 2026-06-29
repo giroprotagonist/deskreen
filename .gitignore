@@ -15,3 +15,8 @@ tsconfig.web.tsbuildinfo
 src/client-viewer/.env
 
 AGENTS.md
+
+.cursor/
+android-receiver/.gradle/
+android-receiver/**/build/
+android-receiver/local.properties

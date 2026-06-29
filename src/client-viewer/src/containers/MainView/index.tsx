@@ -24,6 +24,7 @@ import { ScreenSharingSource } from '../../features/PeerConnection/ScreenSharing
 import ConnectionIcon from './ConnectionIconEnum';
 import { LoadingSharingIconEnum } from './LoadingSharingIconEnum';
 import { useScreenViewingTracker } from './useScreenViewingTracker';
+import isReceiverMode, { isMobilePlaybackDevice } from '../../utils/isReceiverMode';
 
 function MainView() {
 	const [isErrorDialogOpen, setIsErrorDialogOpen] = useState(false);
@@ -37,11 +38,15 @@ function MainView() {
 		DUMMY_MY_DEVICE_DETAILS,
 	);
 
-	const [playing, setPlaying] = useState(true);
+	const [playing, setPlaying] = useState(
+		() => isReceiverMode() || !isMobilePlaybackDevice(),
+	);
 	const [url, setUrl] = useState<MediaStream | null>(null);
 	const [screenSharingSourceType, setScreenSharingSourceType] =
 		useState<ScreenSharingSourceType>(ScreenSharingSource.SCREEN);
-	const [isWithControls, setIsWithControls] = useState(!screenfull.isEnabled);
+	const [isWithControls, setIsWithControls] = useState(
+		() => isReceiverMode() || isMobilePlaybackDevice() || !screenfull.isEnabled,
+	);
 	const [isShownTextPrompt, setIsShownTextPrompt] = useState(false);
 	const [isShownLoadingSharingIcon, setIsShownLoadingSharingIcon] =
 		useState(false);
@@ -98,6 +103,8 @@ function MainView() {
 
 	useEffect(handleRemoveDanglingReactRevealContainer(url), [url]);
 
+	const isStreamActive = url !== null;
+
 	useEffect(
 		handleDisplayingLoadingSharingIconLoop({
 			promptStep,
@@ -119,14 +126,16 @@ function MainView() {
 
 	return (
 		<Grid>
-			<ConnectionPropmpts
-				myDeviceDetails={myDeviceDetails}
-				isShownTextPrompt={isShownTextPrompt}
-				promptStep={promptStep}
-				connectionIconType={connectionIconType}
-				spinnerIconType={loadingSharingIconType}
-				isShownSpinnerIcon={isShownLoadingSharingIcon}
-			/>
+			{!isStreamActive ? (
+				<ConnectionPropmpts
+					myDeviceDetails={myDeviceDetails}
+					isShownTextPrompt={isShownTextPrompt}
+					promptStep={promptStep}
+					connectionIconType={connectionIconType}
+					spinnerIconType={loadingSharingIconType}
+					isShownSpinnerIcon={isShownLoadingSharingIcon}
+				/>
+			) : null}
 			<PlayerView
 				streamUrl={url}
 				screenSharingSourceType={screenSharingSourceType}
