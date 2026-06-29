@@ -9,7 +9,7 @@ import {
 	prepare as prepareMessage,
 	type ProcessedPayload,
 } from '../../utils/message';
-import setSdpMediaBitrate from './setSdpMediaBitrate';
+import applyCastSdpTransform from '../../../../common/webrtc/applyCastSdpTransform';
 import VideoAutoQualityOptimizer from '../VideoAutoQualityOptimizer';
 import {
 	VideoQuality,
@@ -195,15 +195,7 @@ export default class PeerConnection {
 		const peer = new SimplePeer({
 			initiator: false,
 			config: { iceServers: [] },
-			sdpTransform: (sdp) => {
-				let newSDP = sdp;
-				newSDP = setSdpMediaBitrate(
-					newSDP as unknown as string,
-					'video',
-					500000,
-				) as unknown as typeof sdp;
-				return newSDP;
-			},
+			sdpTransform: (sdp) => applyCastSdpTransform(sdp as unknown as string) as typeof sdp,
 		});
 
 		this.peer = peer;

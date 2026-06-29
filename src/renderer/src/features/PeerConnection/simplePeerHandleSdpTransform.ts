@@ -1,7 +1,3 @@
-import setSdpMediaBitrate from './setSdpMediaBitrate';
+import applyCastSdpTransform from '../../../../common/webrtc/applyCastSdpTransform';
 
-export default (sdp: string): string => {
-	let newSDP = sdp;
-	newSDP = setSdpMediaBitrate(newSDP, 'video', 500000);
-	return newSDP;
-};
+export default (sdp: string): string => applyCastSdpTransform(sdp);

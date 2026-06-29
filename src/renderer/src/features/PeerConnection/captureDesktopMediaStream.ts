@@ -14,6 +14,14 @@ export default async function captureDesktopMediaStream(
 ): Promise<MediaStream> {
 	await setHostCaptureSessionActive(true);
 
+	const systemAudioConstraints = {
+		echoCancellation: false,
+		noiseSuppression: false,
+		autoGainControl: false,
+		channelCount: 2,
+		sampleRate: 48000,
+	} as MediaTrackConstraints;
+
 	const captureVideoOnly = async (): Promise<MediaStream> => {
 		return navigator.mediaDevices.getDisplayMedia({
 			video: videoConstraints,
@@ -29,7 +37,7 @@ export default async function captureDesktopMediaStream(
 		try {
 			const streamWithAudio = await navigator.mediaDevices.getDisplayMedia({
 				video: videoConstraints,
-				audio: true,
+				audio: systemAudioConstraints,
 			});
 			if (streamWithAudio.getVideoTracks().length > 0) {
 				return streamWithAudio;

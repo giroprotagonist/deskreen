@@ -33,6 +33,15 @@ const fullscreenEventNames = [
 	'mozfullscreenchange',
 ];
 
+const isMobileFullscreenDevice = (): boolean => {
+	if (typeof navigator === 'undefined') {
+		return false;
+	}
+	return /Android|iPhone|iPad|iPod|Mobile|DeskreenReceiver|wv\)/i.test(
+		navigator.userAgent,
+	);
+};
+
 const getPlayerContainer = (): HTMLElement | null => {
 	return document.getElementById(PLAYER_WRAPPER_ID);
 };
@@ -55,8 +64,17 @@ const requestStandardFullscreen = (element: HTMLElement | null): boolean => {
 		target.mozRequestFullScreen ||
 		target.msRequestFullscreen;
 	if (typeof request !== 'function') return false;
-	request.call(target);
-	return true;
+	try {
+		const result = request.call(target);
+		if (result && typeof (result as Promise<void>).catch === 'function') {
+			void (result as Promise<void>).catch(() => {
+				// ignore; caller may try another target
+			});
+		}
+		return true;
+	} catch {
+		return false;
+	}
 };
 
 const exitStandardFullscreen = (): boolean => {
@@ -67,8 +85,15 @@ const exitStandardFullscreen = (): boolean => {
 		doc.mozCancelFullScreen ||
 		doc.msExitFullscreen;
 	if (typeof exit !== 'function') return false;
-	exit.call(doc);
-	return true;
+	try {
+		const result = exit.call(doc);
+		if (result && typeof (result as Promise<void>).catch === 'function') {
+			void (result as Promise<void>).catch(() => {});
+		}
+		return true;
+	} catch {
+		return false;
+	}
 };
 
 export const isPlayerFullscreen = (): boolean => {
@@ -90,24 +115,50 @@ export const isPlayerFullscreen = (): boolean => {
 };
 
 export const enterPlayerFullscreen = (): boolean => {
+	const video = getPlayerVideo();
+	const videoContainer = document.getElementById('video-container');
 	const container = getPlayerContainer();
-	if (container && screenfull.isEnabled) {
-		screenfull.request(container);
+	const mobileLike = isMobileFullscreenDevice();
+
+	// Mobile browsers (Chrome on Android, WebView): fullscreen the <video> first.
+	if (video) {
+		if (
+			mobileLike &&
+			typeof video.webkitEnterFullscreen === 'function' &&
+			(typeof video.webkitSupportsFullscreen !== 'boolean' ||
+				video.webkitSupportsFullscreen)
+		) {
+			try {
+				video.webkitEnterFullscreen();
+				return true;
+			} catch {
+				// fall through
+			}
+		}
+		if (requestStandardFullscreen(video)) return true;
+	}
+
+	if (videoContainer && requestStandardFullscreen(videoContainer)) {
 		return true;
 	}
-	if (requestStandardFullscreen(container)) return true;
-	const video = getPlayerVideo();
-	if (requestStandardFullscreen(video)) return true;
-	if (video && typeof video.webkitEnterFullscreen === 'function') {
-		if (
-			typeof video.webkitSupportsFullscreen === 'boolean' &&
-			!video.webkitSupportsFullscreen
-		) {
+
+	if (container && requestStandardFullscreen(container)) {
+		return true;
+	}
+
+	if (mobileLike && requestStandardFullscreen(document.documentElement)) {
+		return true;
+	}
+
+	if (container && screenfull.isEnabled) {
+		try {
+			void screenfull.request(container);
+			return true;
+		} catch {
 			return false;
 		}
-		video.webkitEnterFullscreen();
-		return true;
 	}
+
 	return false;
 };
 

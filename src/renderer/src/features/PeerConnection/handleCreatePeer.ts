@@ -6,7 +6,7 @@ import getDesktopSourceStreamBySourceID from './getDesktopSourceStreamBySourceID
 import DesktopCapturerSourceType from '../../../../common/DesktopCapturerSourceType';
 import setHostCaptureSessionActive from './setHostCaptureSessionActive';
 import syncHostCastAudioOutput from './syncHostCastAudioOutput';
-// import simplePeerHandleSdpTransform from './simplePeerHandleSdpTransform';
+import simplePeerHandleSdpTransform from './simplePeerHandleSdpTransform';
 
 const MAX_CAPTURE_RECOVERY_ATTEMPTS = 4;
 
@@ -130,10 +130,8 @@ export default function handleCreatePeer(
 				// @ts-ignore
 				peerConnection.peer = new SimplePeer({
 					initiator: true,
-					// trickle: false,
-					// wrtc: window.api.wrtc,
 					config: { iceServers: [] },
-					// sdpTransform: simplePeerHandleSdpTransform,
+					sdpTransform: simplePeerHandleSdpTransform,
 				});
 				// }
 
