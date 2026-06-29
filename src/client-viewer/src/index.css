@@ -88,3 +88,14 @@ code {
 .rounded-pill-button {
 	border-radius: 9999px;
 }
+
+@keyframes deskreen-touch-ripple {
+	from {
+		transform: scale(0.4);
+		opacity: 1;
+	}
+	to {
+		transform: scale(2.2);
+		opacity: 0;
+	}
+}

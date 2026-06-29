@@ -22,6 +22,18 @@ import {
 import { applyReceiverQualityBufferFromPreference } from '../../utils/receiverJitterBuffer';
 import { RECEIVER_QUALITY_BUFFER_DELAY_MS } from '../../constants/castReliabilityConstants';
 import { ReceiverStreamHealthMonitor } from '../../utils/receiverStreamHealth';
+import type { RemoteControlCapabilityPayload } from '../../../../common/RemoteInputTypes';
+import type { RemoteInputPayload } from '../../../../common/RemoteInputTypes';
+import {
+	getReceiverControlModePreference,
+	setReceiverControlModePreference,
+} from '../../utils/receiverControlModePreference';
+import {
+	attachReceiverTouchControl,
+	type TouchRipple,
+} from '../../utils/receiverTouchControl';
+import { applyReceiverControlModeLatency } from '../../utils/receiverControlModeLatency';
+import { ScreenSharingSource } from '../../features/PeerConnection/ScreenSharingSourceEnum';
 
 interface PlayerViewProps {
 	isWithControls: boolean;
@@ -33,6 +45,8 @@ interface PlayerViewProps {
 	videoQuality: VideoQualityType;
 	screenSharingSourceType: ScreenSharingSourceType;
 	streamUrl: MediaStream | null;
+	remoteControlCapability: RemoteControlCapabilityPayload;
+	onSendRemoteInput?: (payload: RemoteInputPayload) => void;
 }
 
 type IOSVideoElement = HTMLVideoElement & {
@@ -54,11 +68,16 @@ function PlayerView(props: PlayerViewProps) {
 		setVideoQuality,
 		videoQuality,
 		streamUrl,
+		remoteControlCapability,
+		onSendRemoteInput,
 	} = props;
 
 	// const player = useRef(null);
 
 	const videoRef = useRef<HTMLVideoElement>(null);
+	const touchOverlayRef = useRef<HTMLDivElement>(null);
+	const touchControlCleanupRef = useRef<(() => void) | null>(null);
+	const qualityBufferBeforeControlRef = useRef<boolean | null>(null);
 	const audioUnlockedRef = useRef(false);
 	const monoAudioControllerRef = useRef<ReceiverAudioPipelineController | null>(
 		null,
@@ -80,6 +99,16 @@ function PlayerView(props: PlayerViewProps) {
 	const [isQualityBufferEnabled, setIsQualityBufferEnabled] = useState(
 		() => getReceiverQualityBufferPreference(),
 	);
+	const [isControlModeEnabled, setIsControlModeEnabled] = useState(
+		() => getReceiverControlModePreference(),
+	);
+	const [touchRipples, setTouchRipples] = useState<TouchRipple[]>([]);
+	const controlAvailable =
+		receiverMode &&
+		remoteControlCapability.enabled &&
+		remoteControlCapability.screenShare &&
+		screenSharingSourceType === ScreenSharingSource.SCREEN;
+	const showControlModeToggle = receiverMode && remoteControlCapability.enabled;
 
 	useEffect(() => {
 		if (!monoAudioControllerRef.current) {
@@ -188,6 +217,9 @@ function PlayerView(props: PlayerViewProps) {
 	}, []);
 
 	const handleQualityBufferToggle = useCallback(async (enabled: boolean) => {
+		if (isControlModeEnabled) {
+			return;
+		}
 		setIsQualityBufferEnabled(enabled);
 		setReceiverQualityBufferPreference(enabled);
 		applyReceiverQualityBufferFromPreference();
@@ -195,7 +227,82 @@ function PlayerView(props: PlayerViewProps) {
 			enabled,
 			RECEIVER_QUALITY_BUFFER_DELAY_MS,
 		);
-	}, []);
+	}, [isControlModeEnabled]);
+
+	const handleControlModeToggle = useCallback(async (enabled: boolean) => {
+		setIsControlModeEnabled(enabled);
+		setReceiverControlModePreference(enabled);
+
+		if (enabled) {
+			qualityBufferBeforeControlRef.current = isQualityBufferEnabled;
+			if (isQualityBufferEnabled) {
+				setIsQualityBufferEnabled(false);
+				applyReceiverControlModeLatency();
+				await monoAudioControllerRef.current?.setBufferEnabled(false, 0);
+			} else {
+				applyReceiverControlModeLatency();
+			}
+			return;
+		}
+
+		const restoreBuffer =
+			qualityBufferBeforeControlRef.current ??
+			getReceiverQualityBufferPreference();
+		qualityBufferBeforeControlRef.current = null;
+		setIsQualityBufferEnabled(restoreBuffer);
+		setReceiverQualityBufferPreference(restoreBuffer);
+		applyReceiverQualityBufferFromPreference();
+		await monoAudioControllerRef.current?.setBufferEnabled(
+			restoreBuffer,
+			RECEIVER_QUALITY_BUFFER_DELAY_MS,
+		);
+	}, [isQualityBufferEnabled]);
+
+	useEffect(() => {
+		if (!isControlModeEnabled || !controlAvailable || !isWithControls) {
+			touchControlCleanupRef.current?.();
+			touchControlCleanupRef.current = null;
+			return;
+		}
+
+		const video = videoRef.current;
+		const overlay = touchOverlayRef.current;
+		if (!video || !overlay || !onSendRemoteInput) {
+			return;
+		}
+
+		touchControlCleanupRef.current = attachReceiverTouchControl({
+			video,
+			overlay,
+			enabled: true,
+			onSendInput: onSendRemoteInput,
+			onRipple: (ripple) => {
+				setTouchRipples((current) => [...current.slice(-4), ripple]);
+				setTimeout(() => {
+					setTouchRipples((current) =>
+						current.filter((item) => item.id !== ripple.id),
+					);
+				}, 450);
+			},
+		});
+
+		return () => {
+			touchControlCleanupRef.current?.();
+			touchControlCleanupRef.current = null;
+		};
+	}, [
+		isControlModeEnabled,
+		controlAvailable,
+		isWithControls,
+		streamUrl,
+		onSendRemoteInput,
+	]);
+
+	useEffect(() => {
+		if (!controlAvailable && isControlModeEnabled) {
+			void handleControlModeToggle(false);
+		}
+	}, [controlAvailable, isControlModeEnabled, handleControlModeToggle]);
 
 	useEffect(() => {
 		if (!streamUrl) return;
@@ -400,9 +507,13 @@ function PlayerView(props: PlayerViewProps) {
 				showMonoOutputToggle={showMonoOutputToggle}
 				isMonoOutputEnabled={isMonoOutputEnabled}
 				onMonoOutputToggle={handleMonoOutputToggle}
-				showQualityBufferToggle={showQualityBufferToggle}
+				showQualityBufferToggle={showQualityBufferToggle && !isControlModeEnabled}
 				isQualityBufferEnabled={isQualityBufferEnabled}
 				onQualityBufferToggle={handleQualityBufferToggle}
+				showControlModeToggle={showControlModeToggle}
+				isControlModeEnabled={isControlModeEnabled}
+				controlModeAvailable={controlAvailable}
+				onControlModeToggle={handleControlModeToggle}
 				handleClickFullscreen={async () => {
 					const result = await togglePlayerFullscreen();
 					if (result === 'failed') {
@@ -439,18 +550,52 @@ function PlayerView(props: PlayerViewProps) {
 					}}
 				>
 					{isWithControls ? (
-						<video
-							ref={videoRef}
-							autoPlay
-							playsInline
-							className="absolute top-0 left-0 w-full h-full"
-							style={{
-								width: '100%',
-								height: '100%',
-								objectFit: 'contain',
-								backgroundColor: 'black',
-							}}
-						/>
+						<>
+							<video
+								ref={videoRef}
+								autoPlay
+								playsInline
+								className="absolute top-0 left-0 w-full h-full"
+								style={{
+									width: '100%',
+									height: '100%',
+									objectFit: 'contain',
+									backgroundColor: 'black',
+								}}
+							/>
+							{isControlModeEnabled && controlAvailable ? (
+								<div
+									ref={touchOverlayRef}
+									style={{
+										position: 'absolute',
+										inset: 0,
+										zIndex: 2,
+										touchAction: 'none',
+										cursor: 'crosshair',
+									}}
+								>
+									{touchRipples.map((ripple) => (
+										<span
+											key={ripple.id}
+											style={{
+												position: 'absolute',
+												left: ripple.x,
+												top: ripple.y,
+												width: 24,
+												height: 24,
+												marginLeft: -12,
+												marginTop: -12,
+												borderRadius: '50%',
+												border: '2px solid rgba(19, 124, 189, 0.9)',
+												backgroundColor: 'rgba(19, 124, 189, 0.25)',
+												animation: 'deskreen-touch-ripple 450ms ease-out forwards',
+												pointerEvents: 'none',
+											}}
+										/>
+									))}
+								</div>
+							) : null}
+						</>
 					) : (
 						<VideoJSPlayer
 							stream={streamUrl}

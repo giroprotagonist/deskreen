@@ -191,6 +191,9 @@
 	"screen-recording-restart-instructions": "Screen Recording looks enabled in System Settings, but Deskreen still cannot access your display. Quit Deskreen completely with Cmd+Q, then reopen it. If that does not help, turn the Deskreen CE toggle off and on in Screen Recording settings, then restart Deskreen again.",
 	"mute-mac-speakers-while-casting": "Mute Mac speakers while casting",
 	"mute-mac-speakers-while-casting-description": "Lowers Mac output volume during a cast so audio is heard on the viewer device only. Restored when casting stops.",
+	"allow-tablet-control-while-casting": "Allow tablet control while casting",
+	"allow-tablet-control-while-casting-description": "Lets a connected tablet tap and scroll on the cast stream to control this Mac. Requires Accessibility permission in System Settings.",
+	"tablet-control-active": "Tablet control active",
 	"auto-casting-to-your-tablet": "Casting to your tablet automatically.",
 	"pick-a-screen-to-start-casting": "Choose a screen once — Deskreen will remember it for next time."
 }

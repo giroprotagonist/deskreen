@@ -31,6 +31,12 @@ import {
 	probeScreenCaptureAccess,
 	setPreferredDesktopCapturerSourceId,
 } from './configureScreenCaptureSession';
+import {
+	injectRemoteInputOnMac,
+	isAccessibilityTrusted,
+	isMacPlatform,
+} from '../utils/macInputInjection';
+import type { RemoteInputPayload } from '../../common/RemoteInputTypes';
 
 export const initIpcMainHandlers = (mainWindow: BrowserWindow): void => {
 	ipcMain.on('client-changed-language', async (_, newLangCode) => {
@@ -538,6 +544,65 @@ export const initIpcMainHandlers = (mainWindow: BrowserWindow): void => {
 		);
 		if (!enabled) {
 			restoreMacOutputVolume();
+		}
+	});
+
+	ipcMain.handle(IpcEvents.GetAllowTabletControlWhileCasting, () => {
+		if (store.has(ElectronStoreKeys.AllowTabletControlWhileCasting)) {
+			return (
+				store.get(ElectronStoreKeys.AllowTabletControlWhileCasting) === 'true'
+			);
+		}
+		return false;
+	});
+
+	ipcMain.handle(
+		IpcEvents.SetAllowTabletControlWhileCasting,
+		(_, enabled: boolean) => {
+			store.set(
+				ElectronStoreKeys.AllowTabletControlWhileCasting,
+				enabled ? 'true' : 'false',
+			);
+			if (enabled && isMacPlatform()) {
+				isAccessibilityTrusted(true);
+			}
+		},
+	);
+
+	ipcMain.handle(IpcEvents.CheckMacAccessibilityForRemoteControl, () => {
+		if (!isMacPlatform()) {
+			return false;
+		}
+		return isAccessibilityTrusted(true);
+	});
+
+	ipcMain.handle(
+		IpcEvents.InjectRemoteInput,
+		(
+			_,
+			args: {
+				displayID: string;
+				sourceDisplaySize?: { width: number; height: number };
+				payload: RemoteInputPayload;
+			},
+		) => {
+			if (
+				!store.has(ElectronStoreKeys.AllowTabletControlWhileCasting) ||
+				store.get(ElectronStoreKeys.AllowTabletControlWhileCasting) !== 'true'
+			) {
+				return false;
+			}
+			return injectRemoteInputOnMac(
+				args.displayID,
+				args.sourceDisplaySize,
+				args.payload,
+			);
+		},
+	);
+
+	ipcMain.on(IpcEvents.RemoteControlSessionActive, (_, active: boolean) => {
+		if (mainWindow && !mainWindow.isDestroyed()) {
+			mainWindow.webContents.send(IpcEvents.RemoteControlSessionActive, active);
 		}
 	});
 

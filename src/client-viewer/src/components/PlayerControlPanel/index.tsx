@@ -58,6 +58,10 @@ interface PlayerControlPanelProps {
 	showQualityBufferToggle?: boolean;
 	isQualityBufferEnabled?: boolean;
 	onQualityBufferToggle?: (enabled: boolean) => void;
+	showControlModeToggle?: boolean;
+	isControlModeEnabled?: boolean;
+	controlModeAvailable?: boolean;
+	onControlModeToggle?: (enabled: boolean) => void;
 	// toaster: undefined | HTMLDivElement;
 }
 
@@ -78,6 +82,10 @@ function PlayerControlPanel(props: PlayerControlPanelProps) {
 		showQualityBufferToggle = false,
 		isQualityBufferEnabled = false,
 		onQualityBufferToggle,
+		showControlModeToggle = false,
+		isControlModeEnabled = false,
+		controlModeAvailable = false,
+		onControlModeToggle,
 	} = props;
 
 	const isFullScreenAPIAvailable = screenfull.isEnabled;
@@ -180,6 +188,11 @@ function PlayerControlPanel(props: PlayerControlPanelProps) {
 		if (!onQualityBufferToggle) return;
 		onQualityBufferToggle(!isQualityBufferEnabled);
 	}, [isQualityBufferEnabled, onQualityBufferToggle]);
+
+	const handleControlModeToggle = useCallback(() => {
+		if (!onControlModeToggle || !controlModeAvailable) return;
+		onControlModeToggle(!isControlModeEnabled);
+	}, [controlModeAvailable, isControlModeEnabled, onControlModeToggle]);
 
 	return (
 		<>
@@ -335,6 +348,33 @@ function PlayerControlPanel(props: PlayerControlPanelProps) {
 					<Col xs={12} md={3}>
 						<Row end="xs">
 							<Col xs={12}>
+								{showControlModeToggle && (
+									<Tooltip
+										content={
+											controlModeAvailable
+												? t(
+														'Tap the stream to click on your Mac. Two-finger swipe to scroll.',
+													)
+												: t(
+														'Control works when sharing a full screen and the Mac host allows tablet control.',
+													)
+										}
+										position={Position.LEFT}
+									>
+										<Switch
+											onChange={handleControlModeToggle}
+											innerLabel={isControlModeEnabled ? t('ON') : t('OFF')}
+											inline
+											label={t('Control Mac')}
+											alignIndicator={Alignment.RIGHT}
+											checked={isControlModeEnabled}
+											disabled={!controlModeAvailable}
+											style={{
+												marginBottom: '12px',
+											}}
+										/>
+									</Tooltip>
+								)}
 								{showQualityBufferToggle && (
 									<Tooltip
 										content={t(

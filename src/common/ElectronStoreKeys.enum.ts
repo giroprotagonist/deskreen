@@ -3,4 +3,5 @@ export enum ElectronStoreKeys {
 	IsNotFirstTimeAppStart = 'isNotFirstTimeAppStart',
 	LastDesktopCapturerSourceId = 'lastDesktopCapturerSourceId',
 	MuteMacSpeakersWhileCasting = 'muteMacSpeakersWhileCasting',
+	AllowTabletControlWhileCasting = 'allowTabletControlWhileCasting',
 }

@@ -1,5 +1,73 @@
 import DesktopCapturerSourceType from '../../../../common/DesktopCapturerSourceType';
+import type { RemoteInputPayload } from '../../../../common/RemoteInputTypes';
+import { IpcEvents } from '../../../../common/IpcEvents.enum';
 import prepareDataMessageToSendScreenSourceType from './prepareDataMessageToSendScreenSourceType';
+import prepareDataMessageRemoteControlCapability from './prepareDataMessageRemoteControlCapability';
+
+let remoteControlSessionNotified = false;
+
+async function getAllowTabletControlSetting(): Promise<boolean> {
+	try {
+		return Boolean(
+			await window.electron.ipcRenderer.invoke(
+				IpcEvents.GetAllowTabletControlWhileCasting,
+			),
+		);
+	} catch {
+		return false;
+	}
+}
+
+async function sendRemoteControlCapability(
+	peerConnection: PeerConnection,
+): Promise<void> {
+	if (!peerConnection.peer) {
+		return;
+	}
+	const enabled = await getAllowTabletControlSetting();
+	peerConnection.peer.send(
+		prepareDataMessageRemoteControlCapability(
+			enabled,
+			peerConnection.desktopCapturerSourceID,
+		),
+	);
+}
+
+async function handleRemoteInput(
+	peerConnection: PeerConnection,
+	payload: RemoteInputPayload,
+): Promise<void> {
+	const allowed = await getAllowTabletControlSetting();
+	if (!allowed) {
+		return;
+	}
+
+	if (
+		!peerConnection.desktopCapturerSourceID.includes(
+			DesktopCapturerSourceType.SCREEN,
+		)
+	) {
+		return;
+	}
+
+	if (!peerConnection.displayID) {
+		return;
+	}
+
+	const injected = await window.electron.ipcRenderer.invoke(
+		IpcEvents.InjectRemoteInput,
+		{
+			displayID: peerConnection.displayID,
+			sourceDisplaySize: peerConnection.sourceDisplaySize,
+			payload,
+		},
+	);
+
+	if (injected && !remoteControlSessionNotified) {
+		remoteControlSessionNotified = true;
+		window.electron.ipcRenderer.send(IpcEvents.RemoteControlSessionActive, true);
+	}
+}
 
 export default async function handlePeerOnData(
 	peerConnection: PeerConnection,
@@ -8,9 +76,6 @@ export default async function handlePeerOnData(
 	const dataJSON = JSON.parse(data);
 
 	if (dataJSON.type === 'set_video_quality') {
-		// getDisplayMedia capture cannot apply the legacy chromeMediaSource
-		// resolution multipliers. Recreating the stream only stops the live track
-		// and caused white-screen crashes on the tablet viewer.
 		const videoTrack = peerConnection.localStream?.getVideoTracks()[0];
 		if (!videoTrack) {
 			return;
@@ -37,8 +102,21 @@ export default async function handlePeerOnData(
 			? DesktopCapturerSourceType.SCREEN
 			: DesktopCapturerSourceType.WINDOW;
 
-		peerConnection.peer.send(
+		peerConnection.peer?.send(
 			prepareDataMessageToSendScreenSourceType(sourceType),
 		);
+		await sendRemoteControlCapability(peerConnection);
 	}
+
+	if (dataJSON.type === 'get_remote_control_capability') {
+		await sendRemoteControlCapability(peerConnection);
+	}
+
+	if (dataJSON.type === 'remote_input') {
+		await handleRemoteInput(peerConnection, dataJSON.payload as RemoteInputPayload);
+	}
+}
+
+export function resetRemoteControlSessionNotification(): void {
+	remoteControlSessionNotified = false;
 }

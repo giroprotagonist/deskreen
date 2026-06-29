@@ -1,6 +1,7 @@
 import {
 	prepareDataMessageToChangeQuality,
 	prepareDataMessageToGetSharingSourceType,
+	prepareDataMessageToGetRemoteControlCapability,
 } from './simplePeerDataMessages';
 import { VideoQuality } from '../VideoAutoQualityOptimizer/VideoQualityEnum';
 import { ErrorMessage } from '../../components/ErrorDialog/ErrorMessageEnum';
@@ -22,6 +23,7 @@ import {
 export function getSharingShourceType(peerConnection: PeerConnection) {
 	try {
 		peerConnection.peer?.send(prepareDataMessageToGetSharingSourceType());
+		peerConnection.peer?.send(prepareDataMessageToGetRemoteControlCapability());
 	} catch (e) {
 		console.log(e);
 	}
@@ -171,6 +173,12 @@ export default (peerConnection: PeerConnection) => {
 					peerConnection.screenSharingSourceType,
 				);
 			}
+		}
+
+		if (dataJSON.type === 'remote_control_capability') {
+			peerConnection.UIHandler.setRemoteControlCapabilityCallback(
+				dataJSON.payload,
+			);
 		}
 	});
 };

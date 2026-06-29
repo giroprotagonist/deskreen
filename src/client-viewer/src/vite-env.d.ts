@@ -16,6 +16,10 @@ type CreatePeerConnectionUseEffectParams = {
 	setIsShownTextPrompt: (_: boolean) => void;
 	setPromptStep: (_: number) => void;
 	setScreenSharingSourceType: (_: ScreenSharingSourceType) => void;
+	setRemoteControlCapability: (_: {
+		enabled: boolean;
+		screenShare: boolean;
+	}) => void;
 	setDialogErrorMessage: (_: ErrorMessage) => void;
 	setIsErrorDialogOpen: (_: boolean) => void;
 	setUrl: (_: MediaStream | null) => void;

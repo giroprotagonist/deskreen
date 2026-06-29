@@ -18,3 +18,23 @@ export function prepareDataMessageToGetSharingSourceType() {
     }
   `;
 }
+
+export function prepareDataMessageToGetRemoteControlCapability() {
+	return JSON.stringify({
+		type: 'get_remote_control_capability',
+		payload: {},
+	});
+}
+
+export function prepareRemoteInputMessage(payload: {
+	action: 'click' | 'scroll';
+	x: number;
+	y: number;
+	button?: 'left';
+	deltaY?: number;
+}) {
+	return JSON.stringify({
+		type: 'remote_input',
+		payload,
+	});
+}

@@ -3,10 +3,12 @@ import NullSimplePeer from './NullSimplePeer';
 import NullUser from './NullUser';
 import setHostCaptureSessionActive from './setHostCaptureSessionActive';
 import syncHostCastAudioOutput from './syncHostCastAudioOutput';
+import { resetRemoteControlSessionNotification } from './handlePeerOnData';
 
 export default function handleSelfDestroy(
 	peerConnection: PeerConnection,
 ): void {
+	resetRemoteControlSessionNotification();
 	peerConnection.partner = NullUser;
 	window.electron.ipcRenderer.invoke(
 		IpcEvents.DisconnectDeviceById,

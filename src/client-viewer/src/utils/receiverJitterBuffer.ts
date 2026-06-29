@@ -74,3 +74,7 @@ export function applyReceiverQualityBufferFromPreference(): void {
 	const delayMs = enabled ? RECEIVER_QUALITY_BUFFER_DELAY_MS : 0;
 	applyReceiverJitterBufferTargets(activePeerConnection, delayMs);
 }
+
+export function getActiveReceiverPeerConnection(): RTCPeerConnection | null {
+	return activePeerConnection;
+}

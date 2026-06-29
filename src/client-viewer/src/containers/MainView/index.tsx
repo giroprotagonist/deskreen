@@ -25,6 +25,7 @@ import ConnectionIcon from './ConnectionIconEnum';
 import { LoadingSharingIconEnum } from './LoadingSharingIconEnum';
 import { useScreenViewingTracker } from './useScreenViewingTracker';
 import isReceiverMode, { isMobilePlaybackDevice } from '../../utils/isReceiverMode';
+import type { RemoteControlCapabilityPayload } from '../../../../common/RemoteInputTypes';
 
 function MainView() {
 	const [isErrorDialogOpen, setIsErrorDialogOpen] = useState(false);
@@ -57,6 +58,11 @@ function MainView() {
 	);
 	const [peer, setPeer] = useState<undefined | PeerConnection>();
 	const [connectionRoomId, setConnectionRoomId] = useState<string>('');
+	const [remoteControlCapability, setRemoteControlCapability] =
+		useState<RemoteControlCapabilityPayload>({
+			enabled: false,
+			screenShare: true,
+		});
 
 	useEffect(() => {
 		const { pathname } = window.location;
@@ -89,6 +95,7 @@ function MainView() {
 			setIsShownTextPrompt,
 			setPromptStep,
 			setScreenSharingSourceType,
+			setRemoteControlCapability,
 			setDialogErrorMessage,
 			setIsErrorDialogOpen,
 			setUrl,
@@ -139,6 +146,8 @@ function MainView() {
 			<PlayerView
 				streamUrl={url}
 				screenSharingSourceType={screenSharingSourceType}
+				remoteControlCapability={remoteControlCapability}
+				onSendRemoteInput={(payload) => peer?.sendRemoteInput(payload)}
 				setIsWithControls={setIsWithControls}
 				isWithControls={isWithControls}
 				handlePlayPause={handlePlayPause}

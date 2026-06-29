@@ -82,6 +82,8 @@ export default function SettingsOverlay(
 	const [currentVersion, setCurrentVersion] = useState('');
 	const [muteMacSpeakersWhileCasting, setMuteMacSpeakersWhileCasting] =
 		useState(true);
+	const [allowTabletControlWhileCasting, setAllowTabletControlWhileCasting] =
+		useState(false);
 
 	const { t } = useTranslation();
 
@@ -147,6 +149,14 @@ export default function SettingsOverlay(
 			})
 			.catch((error) => {
 				console.error('Error getting mute-while-casting setting:', error);
+			});
+		void window.electron.ipcRenderer
+			.invoke(IpcEvents.GetAllowTabletControlWhileCasting)
+			.then((enabled: boolean) => {
+				setAllowTabletControlWhileCasting(Boolean(enabled));
+			})
+			.catch((error) => {
+				console.error('Error getting tablet-control setting:', error);
 			});
 	}, []);
 
@@ -214,6 +224,34 @@ export default function SettingsOverlay(
 					/>
 					<Text className="bp3-text-muted" style={{ display: 'block', marginTop: 8 }}>
 						{t('mute-mac-speakers-while-casting-description')}
+					</Text>
+				</div>
+
+				<div style={{ marginTop: '24px' }}>
+					<SettingRowLabelAndInput
+						icon="hand"
+						label={t('allow-tablet-control-while-casting')}
+						input={
+							<Switch
+								checked={allowTabletControlWhileCasting}
+								onChange={(event) => {
+									const enabled = event.currentTarget.checked;
+									setAllowTabletControlWhileCasting(enabled);
+									void window.electron.ipcRenderer.invoke(
+										IpcEvents.SetAllowTabletControlWhileCasting,
+										enabled,
+									);
+									if (enabled) {
+										void window.electron.ipcRenderer.invoke(
+											IpcEvents.CheckMacAccessibilityForRemoteControl,
+										);
+									}
+								}}
+							/>
+						}
+					/>
+					<Text className="bp3-text-muted" style={{ display: 'block', marginTop: 8 }}>
+						{t('allow-tablet-control-while-casting-description')}
 					</Text>
 				</div>
 

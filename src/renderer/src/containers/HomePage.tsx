@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Classes } from '@blueprintjs/core';
-import { ToastProvider, DefaultToast } from 'react-toast-notifications';
+import { ToastProvider, DefaultToast, useToasts } from 'react-toast-notifications';
+import { useTranslation } from 'react-i18next';
 
 import { LIGHT_UI_BACKGROUND } from './SettingsProvider';
 import DeskreenStepper from './DeskreenStepper';
@@ -41,6 +42,34 @@ async function disconnectAllActiveSharingSessions(): Promise<void> {
 			),
 		),
 	);
+}
+
+function RemoteControlSessionListener(): null {
+	const { addToast } = useToasts();
+	const { t } = useTranslation();
+
+	useEffect(() => {
+		const handleRemoteControlActive = (): void => {
+			addToast(t('tablet-control-active'), {
+				appearance: 'warning',
+				autoDismiss: false,
+			});
+		};
+
+		window.electron.ipcRenderer.on(
+			IpcEvents.RemoteControlSessionActive,
+			handleRemoteControlActive,
+		);
+
+		return () => {
+			window.electron.ipcRenderer.removeListener(
+				IpcEvents.RemoteControlSessionActive,
+				handleRemoteControlActive,
+			);
+		};
+	}, [addToast, t]);
+
+	return null;
 }
 
 export default function HomePage(): React.ReactElement {
@@ -117,6 +146,7 @@ export default function HomePage(): React.ReactElement {
 			autoDismissTimeout={5000}
 			components={{ Toast: CustomToastWithTheme }}
 		>
+			<RemoteControlSessionListener />
 			<div className={Classes.TREE}>
 				<TopPanel handleReset={handleResetWithSharingSessionRestart} />
 				<DeskreenStepper

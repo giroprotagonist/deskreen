@@ -16,7 +16,7 @@ import {
 	VideoQuality,
 	type VideoQualityType,
 } from '../VideoAutoQualityOptimizer/VideoQualityEnum';
-import { prepareDataMessageToChangeQuality } from './simplePeerDataMessages';
+import { prepareDataMessageToChangeQuality, prepareRemoteInputMessage } from './simplePeerDataMessages';
 import { VIDEO_QUALITY_TO_DECIMAL } from './../../constants/appConstants';
 import { ErrorMessage } from '../../components/ErrorDialog/ErrorMessageEnum';
 import peerConnectionHandleSocket from './peerConnectionHandleSocket';
@@ -110,6 +110,23 @@ export default class PeerConnection {
 					VIDEO_QUALITY_TO_DECIMAL[this.videoQuality],
 				),
 			);
+		}
+	}
+
+	sendRemoteInput(payload: {
+		action: 'click' | 'scroll';
+		x: number;
+		y: number;
+		button?: 'left';
+		deltaY?: number;
+	}): void {
+		if (!this.peer || !this.isStreamStarted) {
+			return;
+		}
+		try {
+			this.peer.send(prepareRemoteInputMessage(payload));
+		} catch (error) {
+			console.warn('Failed to send remote input', error);
 		}
 	}
 
