@@ -28,6 +28,16 @@ export function parseDisplayIdFromScreenSourceId(sourceId: string): string {
 	return match?.[1] ?? '';
 }
 
+export function getDisplayLogicalSize(display: Display): {
+	width: number;
+	height: number;
+} {
+	return {
+		width: display.bounds.width,
+		height: display.bounds.height,
+	};
+}
+
 function isRateLimited(): boolean {
 	const now = Date.now();
 	eventTimestamps = eventTimestamps.filter((ts) => now - ts < 1000);
@@ -36,11 +46,6 @@ function isRateLimited(): boolean {
 	}
 	eventTimestamps.push(now);
 	return false;
-}
-
-function electronYToCgGlobalY(electronY: number): number {
-	const primary = screen.getPrimaryDisplay();
-	return primary.bounds.height - electronY;
 }
 
 function resolveTargetDisplay(
@@ -66,20 +71,22 @@ function resolveTargetDisplay(
 	return screen.getPrimaryDisplay();
 }
 
+/**
+ * Map normalized (0–1) touch coords to global screen points.
+ * Uses display.bounds (logical DIP) — never display.size (physical pixels on Retina).
+ * macOS CGEvent screen coords: origin top-left of the primary display (same as Electron bounds).
+ */
 function resolveAbsolutePoint(
 	display: Display,
-	sourceDisplaySize: { width: number; height: number } | undefined,
 	xFraction: number,
 	yFraction: number,
 ): { x: number; y: number } {
-	const width = sourceDisplaySize?.width ?? display.bounds.width;
-	const height = sourceDisplaySize?.height ?? display.bounds.height;
-	const electronX = display.bounds.x + xFraction * width;
-	const electronY = display.bounds.y + yFraction * height;
+	const x = display.bounds.x + xFraction * display.bounds.width;
+	const y = display.bounds.y + yFraction * display.bounds.height;
 
 	return {
-		x: Math.round(electronX),
-		y: Math.round(electronYToCgGlobalY(electronY)),
+		x: Math.round(x),
+		y: Math.round(y),
 	};
 }
 
@@ -101,7 +108,6 @@ function runSwiftInputScript(scriptBody: string): boolean {
 export function injectRemoteInputOnMac(
 	displayID: string,
 	desktopCapturerSourceID: string,
-	sourceDisplaySize: { width: number; height: number } | undefined,
 	payload: RemoteInputPayload,
 ): RemoteInputInjectResult {
 	if (!isMacPlatform()) {
@@ -125,12 +131,7 @@ export function injectRemoteInputOnMac(
 		return { ok: false, reason: 'display' };
 	}
 
-	const point = resolveAbsolutePoint(
-		display,
-		sourceDisplaySize,
-		payload.x,
-		payload.y,
-	);
+	const point = resolveAbsolutePoint(display, payload.x, payload.y);
 
 	if (payload.action === 'click') {
 		const ok = runSwiftInputScript(`

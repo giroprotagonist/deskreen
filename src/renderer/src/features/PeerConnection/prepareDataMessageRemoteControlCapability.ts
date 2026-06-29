@@ -3,6 +3,8 @@ import DesktopCapturerSourceType from '../../../../common/DesktopCapturerSourceT
 export default function prepareDataMessageRemoteControlCapability(
 	enabled: boolean,
 	desktopCapturerSourceID: string,
+	sourceWidth?: number,
+	sourceHeight?: number,
 ): string {
 	const screenShare = desktopCapturerSourceID.includes(
 		DesktopCapturerSourceType.SCREEN,
@@ -12,6 +14,9 @@ export default function prepareDataMessageRemoteControlCapability(
 		payload: {
 			enabled,
 			screenShare,
+			...(sourceWidth && sourceHeight
+				? { sourceWidth, sourceHeight }
+				: {}),
 		},
 	});
 }

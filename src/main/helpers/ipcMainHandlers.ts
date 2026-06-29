@@ -70,6 +70,20 @@ export const initIpcMainHandlers = (mainWindow: BrowserWindow): void => {
 		return undefined;
 	});
 
+	ipcMain.handle('get-display-logical-size-by-display-id', (_, displayID: string) => {
+		const display = screen.getAllDisplays().find((d: Display) => {
+			return `${d.id}` === displayID;
+		});
+
+		if (display) {
+			return {
+				width: display.bounds.width,
+				height: display.bounds.height,
+			};
+		}
+		return undefined;
+	});
+
 	ipcMain.handle(IpcEvents.GetIsLinuxWaylandSession, () => {
 		return isLinuxWaylandSession;
 	});
@@ -583,7 +597,6 @@ export const initIpcMainHandlers = (mainWindow: BrowserWindow): void => {
 			args: {
 				displayID: string;
 				desktopCapturerSourceID?: string;
-				sourceDisplaySize?: { width: number; height: number };
 				payload: RemoteInputPayload;
 			},
 		) => {
@@ -596,7 +609,6 @@ export const initIpcMainHandlers = (mainWindow: BrowserWindow): void => {
 			return injectRemoteInputOnMac(
 				args.displayID,
 				args.desktopCapturerSourceID ?? '',
-				args.sourceDisplaySize,
 				args.payload,
 			);
 		},

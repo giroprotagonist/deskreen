@@ -17,6 +17,8 @@ type AttachTouchControlOptions = {
 	video: HTMLVideoElement;
 	overlay: HTMLElement;
 	enabled: boolean;
+	sourceWidth?: number;
+	sourceHeight?: number;
 	onSendInput: TouchControlSendInput;
 	onRipple?: (ripple: TouchRipple) => void;
 };
@@ -26,7 +28,8 @@ const MIN_SCROLL_DELTA_PX = 8;
 export function attachReceiverTouchControl(
 	options: AttachTouchControlOptions,
 ): () => void {
-	const { video, overlay, enabled, onSendInput, onRipple } = options;
+	const { video, overlay, enabled, onSendInput, onRipple, sourceWidth, sourceHeight } =
+		options;
 	let active = enabled;
 	let lastTouchY: number | null = null;
 	let rippleId = 0;
@@ -42,7 +45,10 @@ export function attachReceiverTouchControl(
 	};
 
 	const sendAtPoint = (clientX: number, clientY: number, action: 'click') => {
-		const coords = mapVideoTouchToSourceCoords(video, clientX, clientY);
+		const coords = mapVideoTouchToSourceCoords(video, clientX, clientY, {
+			sourceWidth,
+			sourceHeight,
+		});
 		if (!coords) {
 			return;
 		}
@@ -100,7 +106,10 @@ export function attachReceiverTouchControl(
 
 		const centerX = (event.touches[0].clientX + event.touches[1].clientX) / 2;
 		const centerY = (event.touches[0].clientY + event.touches[1].clientY) / 2;
-		const coords = mapVideoTouchToSourceCoords(video, centerX, centerY);
+		const coords = mapVideoTouchToSourceCoords(video, centerX, centerY, {
+			sourceWidth,
+			sourceHeight,
+		});
 		if (!coords) {
 			return;
 		}

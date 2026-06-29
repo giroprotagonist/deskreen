@@ -18,6 +18,30 @@ async function getAllowTabletControlSetting(): Promise<boolean> {
 	}
 }
 
+async function getDisplayLogicalSizeForPeer(
+	peerConnection: PeerConnection,
+): Promise<{ width: number; height: number } | undefined> {
+	if (!peerConnection.displayID) {
+		return undefined;
+	}
+	try {
+		const size = await window.electron.ipcRenderer.invoke(
+			'get-display-logical-size-by-display-id',
+			peerConnection.displayID,
+		);
+		if (
+			size &&
+			typeof size.width === 'number' &&
+			typeof size.height === 'number'
+		) {
+			return size;
+		}
+	} catch {
+		// ignore
+	}
+	return undefined;
+}
+
 async function sendRemoteControlCapability(
 	peerConnection: PeerConnection,
 ): Promise<void> {
@@ -25,10 +49,13 @@ async function sendRemoteControlCapability(
 		return;
 	}
 	const enabled = await getAllowTabletControlSetting();
+	const logicalSize = await getDisplayLogicalSizeForPeer(peerConnection);
 	peerConnection.peer.send(
 		prepareDataMessageRemoteControlCapability(
 			enabled,
 			peerConnection.desktopCapturerSourceID,
+			logicalSize?.width,
+			logicalSize?.height,
 		),
 	);
 }
@@ -55,7 +82,6 @@ async function handleRemoteInput(
 		{
 			displayID: peerConnection.displayID,
 			desktopCapturerSourceID: peerConnection.desktopCapturerSourceID,
-			sourceDisplaySize: peerConnection.sourceDisplaySize,
 			payload,
 		},
 	);

@@ -14,4 +14,8 @@ export type RemoteInputPayload = {
 export type RemoteControlCapabilityPayload = {
 	enabled: boolean;
 	screenShare: boolean;
+	/** Logical display width (DIP) of the shared screen — for touch mapping on the receiver. */
+	sourceWidth?: number;
+	/** Logical display height (DIP) of the shared screen — for touch mapping on the receiver. */
+	sourceHeight?: number;
 };

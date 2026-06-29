@@ -277,6 +277,8 @@ function PlayerView(props: PlayerViewProps) {
 			video,
 			overlay,
 			enabled: true,
+			sourceWidth: remoteControlCapability.sourceWidth,
+			sourceHeight: remoteControlCapability.sourceHeight,
 			onSendInput: onSendRemoteInput,
 			onRipple: (ripple) => {
 				setTouchRipples((current) => [...current.slice(-4), ripple]);
@@ -298,6 +300,8 @@ function PlayerView(props: PlayerViewProps) {
 		isWithControls,
 		streamUrl,
 		onSendRemoteInput,
+		remoteControlCapability.sourceWidth,
+		remoteControlCapability.sourceHeight,
 	]);
 
 	useEffect(() => {

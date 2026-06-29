@@ -3,6 +3,12 @@ export type NormalizedSourceCoords = {
 	y: number;
 };
 
+export type MapVideoTouchOptions = {
+	/** Host-reported logical display size — preferred over videoWidth/Height on tablets. */
+	sourceWidth?: number;
+	sourceHeight?: number;
+};
+
 /**
  * Maps a pointer position on a video element to normalized (0–1) coordinates
  * on the visible media content, accounting for object-fit: contain letterboxing.
@@ -11,6 +17,7 @@ export default function mapVideoTouchToSourceCoords(
 	video: HTMLVideoElement,
 	clientX: number,
 	clientY: number,
+	options: MapVideoTouchOptions = {},
 ): NormalizedSourceCoords | null {
 	const rect = video.getBoundingClientRect();
 	if (rect.width <= 0 || rect.height <= 0) {
@@ -20,12 +27,14 @@ export default function mapVideoTouchToSourceCoords(
 	const localX = clientX - rect.left;
 	const localY = clientY - rect.top;
 
-	let videoWidth = video.videoWidth;
-	let videoHeight = video.videoHeight;
+	const hostWidth = options.sourceWidth;
+	const hostHeight = options.sourceHeight;
 
-	// WebView/Android may not expose intrinsic dimensions immediately — fall back
-	// to the visible element box so taps still register.
-	if (videoWidth <= 0 || videoHeight <= 0) {
+	let contentWidth = hostWidth && hostWidth > 0 ? hostWidth : video.videoWidth;
+	let contentHeight =
+		hostHeight && hostHeight > 0 ? hostHeight : video.videoHeight;
+
+	if (contentWidth <= 0 || contentHeight <= 0) {
 		return {
 			x: Math.min(1, Math.max(0, localX / rect.width)),
 			y: Math.min(1, Math.max(0, localY / rect.height)),
@@ -33,19 +42,19 @@ export default function mapVideoTouchToSourceCoords(
 	}
 
 	const elementAspect = rect.width / rect.height;
-	const videoAspect = videoWidth / videoHeight;
+	const contentAspect = contentWidth / contentHeight;
 
-	let contentWidth = rect.width;
-	let contentHeight = rect.height;
+	let visibleWidth = rect.width;
+	let visibleHeight = rect.height;
 	let offsetX = 0;
 	let offsetY = 0;
 
-	if (videoAspect > elementAspect) {
-		contentHeight = rect.width / videoAspect;
-		offsetY = (rect.height - contentHeight) / 2;
+	if (contentAspect > elementAspect) {
+		visibleHeight = rect.width / contentAspect;
+		offsetY = (rect.height - visibleHeight) / 2;
 	} else {
-		contentWidth = rect.height * videoAspect;
-		offsetX = (rect.width - contentWidth) / 2;
+		visibleWidth = rect.height * contentAspect;
+		offsetX = (rect.width - visibleWidth) / 2;
 	}
 
 	const contentLocalX = localX - offsetX;
@@ -54,14 +63,14 @@ export default function mapVideoTouchToSourceCoords(
 	if (
 		contentLocalX < 0 ||
 		contentLocalY < 0 ||
-		contentLocalX > contentWidth ||
-		contentLocalY > contentHeight
+		contentLocalX > visibleWidth ||
+		contentLocalY > visibleHeight
 	) {
 		return null;
 	}
 
 	return {
-		x: contentLocalX / contentWidth,
-		y: contentLocalY / contentHeight,
+		x: contentLocalX / visibleWidth,
+		y: contentLocalY / visibleHeight,
 	};
 }
