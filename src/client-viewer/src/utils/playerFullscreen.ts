@@ -33,6 +33,20 @@ const fullscreenEventNames = [
 	'mozfullscreenchange',
 ];
 
+const isIOSDevice = (): boolean => {
+	if (typeof navigator === 'undefined') {
+		return false;
+	}
+	return /iPhone|iPad|iPod/i.test(navigator.userAgent);
+};
+
+const isAndroidDevice = (): boolean => {
+	if (typeof navigator === 'undefined') {
+		return false;
+	}
+	return /Android/i.test(navigator.userAgent);
+};
+
 const isMobileFullscreenDevice = (): boolean => {
 	if (typeof navigator === 'undefined') {
 		return false;
@@ -54,7 +68,9 @@ const getPlayerVideo = (): IOSVideoElement | null => {
 	return maybeVideo as IOSVideoElement;
 };
 
-const requestStandardFullscreen = (element: HTMLElement | null): boolean => {
+const requestStandardFullscreen = async (
+	element: HTMLElement | null,
+): Promise<boolean> => {
 	if (!element) return false;
 	const target = element as LegacyFullscreenElement;
 	const request =
@@ -66,18 +82,16 @@ const requestStandardFullscreen = (element: HTMLElement | null): boolean => {
 	if (typeof request !== 'function') return false;
 	try {
 		const result = request.call(target);
-		if (result && typeof (result as Promise<void>).catch === 'function') {
-			void (result as Promise<void>).catch(() => {
-				// ignore; caller may try another target
-			});
+		if (result && typeof (result as Promise<void>).then === 'function') {
+			await (result as Promise<void>);
 		}
-		return true;
+		return isPlayerFullscreen();
 	} catch {
 		return false;
 	}
 };
 
-const exitStandardFullscreen = (): boolean => {
+const exitStandardFullscreen = async (): Promise<boolean> => {
 	const doc = document as LegacyFullscreenDocument;
 	const exit =
 		doc.exitFullscreen ||
@@ -87,13 +101,19 @@ const exitStandardFullscreen = (): boolean => {
 	if (typeof exit !== 'function') return false;
 	try {
 		const result = exit.call(doc);
-		if (result && typeof (result as Promise<void>).catch === 'function') {
-			void (result as Promise<void>).catch(() => {});
+		if (result && typeof (result as Promise<void>).then === 'function') {
+			await (result as Promise<void>);
 		}
-		return true;
+		return !isPlayerFullscreen();
 	} catch {
 		return false;
 	}
+};
+
+const prepareAndroidVideoForFullscreen = (video: IOSVideoElement): void => {
+	video.removeAttribute('playsinline');
+	video.removeAttribute('webkit-playsinline');
+	video.setAttribute('x5-video-player-type', 'h5-page');
 };
 
 export const isPlayerFullscreen = (): boolean => {
@@ -114,16 +134,16 @@ export const isPlayerFullscreen = (): boolean => {
 	return false;
 };
 
-export const enterPlayerFullscreen = (): boolean => {
+export const enterPlayerFullscreen = async (): Promise<boolean> => {
 	const video = getPlayerVideo();
 	const videoContainer = document.getElementById('video-container');
 	const container = getPlayerContainer();
-	const mobileLike = isMobileFullscreenDevice();
+	const ios = isIOSDevice();
+	const android = isAndroidDevice();
 
-	// Mobile browsers (Chrome on Android, WebView): fullscreen the <video> first.
-	if (video) {
+	// iOS Safari: native video fullscreen layer.
+	if (video && ios) {
 		if (
-			mobileLike &&
 			typeof video.webkitEnterFullscreen === 'function' &&
 			(typeof video.webkitSupportsFullscreen !== 'boolean' ||
 				video.webkitSupportsFullscreen)
@@ -135,24 +155,36 @@ export const enterPlayerFullscreen = (): boolean => {
 				// fall through
 			}
 		}
-		if (requestStandardFullscreen(video)) return true;
 	}
 
-	if (videoContainer && requestStandardFullscreen(videoContainer)) {
+	// Android (Chrome + WebView): requestFullscreen on the playing <video>.
+	if (video && android) {
+		prepareAndroidVideoForFullscreen(video);
+		if (await requestStandardFullscreen(video)) return true;
+	}
+
+	if (video && !android && (await requestStandardFullscreen(video))) {
 		return true;
 	}
 
-	if (container && requestStandardFullscreen(container)) {
+	if (videoContainer && (await requestStandardFullscreen(videoContainer))) {
 		return true;
 	}
 
-	if (mobileLike && requestStandardFullscreen(document.documentElement)) {
+	if (container && (await requestStandardFullscreen(container))) {
+		return true;
+	}
+
+	if (
+		isMobileFullscreenDevice() &&
+		(await requestStandardFullscreen(document.documentElement))
+	) {
 		return true;
 	}
 
 	if (container && screenfull.isEnabled) {
 		try {
-			void screenfull.request(container);
+			await screenfull.request(container);
 			return true;
 		} catch {
 			return false;
@@ -162,12 +194,12 @@ export const enterPlayerFullscreen = (): boolean => {
 	return false;
 };
 
-export const exitPlayerFullscreen = (): boolean => {
+export const exitPlayerFullscreen = async (): Promise<boolean> => {
 	if (screenfull.isEnabled && screenfull.isFullscreen) {
-		screenfull.exit();
+		await screenfull.exit();
 		return true;
 	}
-	if (exitStandardFullscreen()) return true;
+	if (await exitStandardFullscreen()) return true;
 	const video = getPlayerVideo();
 	if (video && typeof video.webkitExitFullscreen === 'function') {
 		if (
@@ -182,11 +214,13 @@ export const exitPlayerFullscreen = (): boolean => {
 	return false;
 };
 
-export const togglePlayerFullscreen = (): 'entered' | 'exited' | 'failed' => {
+export const togglePlayerFullscreen = async (): Promise<
+	'entered' | 'exited' | 'failed'
+> => {
 	if (isPlayerFullscreen()) {
-		return exitPlayerFullscreen() ? 'exited' : 'failed';
+		return (await exitPlayerFullscreen()) ? 'exited' : 'failed';
 	}
-	return enterPlayerFullscreen() ? 'entered' : 'failed';
+	return (await enterPlayerFullscreen()) ? 'entered' : 'failed';
 };
 
 export const subscribeToPlayerFullscreenChange = (

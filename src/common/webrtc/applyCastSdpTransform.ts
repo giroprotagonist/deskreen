@@ -1,8 +1,8 @@
 import setSdpMediaBitrate from './setSdpMediaBitrate';
 import setSdpOpusAudioConfig from './setSdpOpusAudioConfig';
 
-/** ~128 kbps Opus stereo — similar to a good MP3, efficient over WebRTC. */
-export const CAST_AUDIO_MAX_BITRATE = 128000;
+/** ~256 kbps Opus stereo — high-quality audio over WebRTC. */
+export const CAST_AUDIO_MAX_BITRATE = 256000;
 
 /** Video cap for cast sessions (kbps in b=AS). */
 export const CAST_VIDEO_MAX_BITRATE_KBPS = 8000;

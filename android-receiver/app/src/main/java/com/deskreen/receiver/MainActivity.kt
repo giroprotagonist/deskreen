@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
 import android.webkit.PermissionRequest
 import android.webkit.RenderProcessGoneDetail
@@ -16,6 +17,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
@@ -32,6 +34,7 @@ import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 	private lateinit var webView: WebView
+	private lateinit var rootLayout: FrameLayout
 	private lateinit var connectPanel: LinearLayout
 	private lateinit var statusPanel: LinearLayout
 	private lateinit var statusText: TextView
@@ -40,6 +43,9 @@ class MainActivity : AppCompatActivity() {
 	private lateinit var scanQrButton: Button
 	private lateinit var scanQrStatusButton: Button
 	private lateinit var openInChromeButton: Button
+
+	private var customView: View? = null
+	private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
 	private var isConnected = false
 	private var discoveryJob: Job? = null
@@ -71,6 +77,7 @@ class MainActivity : AppCompatActivity() {
 		enterImmersiveMode()
 
 		webView = findViewById(R.id.webView)
+		rootLayout = findViewById(R.id.rootLayout)
 		connectPanel = findViewById(R.id.connectPanel)
 		statusPanel = findViewById(R.id.statusPanel)
 		statusText = findViewById(R.id.statusText)
@@ -196,6 +203,41 @@ class MainActivity : AppCompatActivity() {
 				request?.grant(request.resources)
 			}
 
+			override fun onShowCustomView(view: View?, callback: CustomViewCallback?) {
+				if (view == null) {
+					callback?.onCustomViewHidden()
+					return
+				}
+				if (customView != null) {
+					callback?.onCustomViewHidden()
+					return
+				}
+
+				customView = view
+				customViewCallback = callback
+				rootLayout.addView(
+					view,
+					FrameLayout.LayoutParams(
+						ViewGroup.LayoutParams.MATCH_PARENT,
+						ViewGroup.LayoutParams.MATCH_PARENT,
+					),
+				)
+				webView.visibility = View.GONE
+				enterImmersiveMode()
+			}
+
+			override fun onHideCustomView() {
+				val view = customView ?: return
+				rootLayout.removeView(view)
+				customView = null
+				customViewCallback?.onCustomViewHidden()
+				customViewCallback = null
+				if (isConnected) {
+					webView.visibility = View.VISIBLE
+				}
+				enterImmersiveMode()
+			}
+
 			override fun onConsoleMessage(message: android.webkit.ConsoleMessage?): Boolean {
 				if (message != null) {
 					android.util.Log.d(
@@ -206,6 +248,18 @@ class MainActivity : AppCompatActivity() {
 				return super.onConsoleMessage(message)
 			}
 		}
+	}
+
+	private fun hideHtml5FullscreenView() {
+		val view = customView ?: return
+		rootLayout.removeView(view)
+		customView = null
+		customViewCallback?.onCustomViewHidden()
+		customViewCallback = null
+		if (isConnected) {
+			webView.visibility = View.VISIBLE
+		}
+		enterImmersiveMode()
 	}
 
 	private fun loadDeskreenUrl(rawUrl: String) {
@@ -290,6 +344,10 @@ class MainActivity : AppCompatActivity() {
 
 	@Deprecated("Deprecated in Java")
 	override fun onBackPressed() {
+		if (customView != null) {
+			hideHtml5FullscreenView()
+			return
+		}
 		if (webView.visibility == View.VISIBLE) {
 			showStatus(getString(R.string.searching_for_deskreen))
 			webView.loadUrl("about:blank")

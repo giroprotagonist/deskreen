@@ -47,7 +47,7 @@ interface PlayerControlPanelProps {
 	onSwitchChangedCallback: (isEnabled: boolean) => void;
 	isPlaying: boolean;
 	isDefaultPlayerTurnedOn: boolean;
-	handleClickFullscreen: () => 'entered' | 'exited' | 'failed';
+	handleClickFullscreen: () => Promise<'entered' | 'exited' | 'failed'>;
 	handleClickPlayPause: () => void;
 	setVideoQuality: (q: VideoQualityType) => void;
 	selectedVideoQuality: VideoQualityType;
@@ -78,8 +78,8 @@ function PlayerControlPanel(props: PlayerControlPanelProps) {
 		return cleanup;
 	}, []);
 
-	const handleClickFullscreenWhenDefaultPlayerIsOn = useCallback(() => {
-		const result = handlePlayerToggleFullscreen();
+	const handleClickFullscreenWhenDefaultPlayerIsOn = useCallback(async () => {
+		const result = await handlePlayerToggleFullscreen();
 		if (result === 'failed') {
 			console.warn('Unable to toggle fullscreen');
 			return result;
@@ -119,10 +119,10 @@ function PlayerControlPanel(props: PlayerControlPanelProps) {
 		onSwitchChangedCallback(nextState);
 	}, [isDefaultPlayerTurnedOn, onSwitchChangedCallback]);
 
-	const handleFullscreenClick = useCallback(() => {
+	const handleFullscreenClick = useCallback(async () => {
 		const result = isDefaultPlayerTurnedOn
-			? handleClickFullscreenWhenDefaultPlayerIsOn()
-			: handleClickFullscreen();
+			? await handleClickFullscreenWhenDefaultPlayerIsOn()
+			: await handleClickFullscreen();
 		if (result === 'failed') {
 			trackAnalyticsEvent('fullscreen_toggle_failed', {
 				player_mode: isDefaultPlayerTurnedOn ? 'default' : 'custom',

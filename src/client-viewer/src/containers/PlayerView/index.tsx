@@ -243,8 +243,8 @@ function PlayerView(props: PlayerViewProps) {
 			<PlayerControlPanel
 				onSwitchChangedCallback={(isEnabled) => setIsWithControls(isEnabled)}
 				isDefaultPlayerTurnedOn={isWithControls}
-				handleClickFullscreen={() => {
-					const result = togglePlayerFullscreen();
+				handleClickFullscreen={async () => {
+					const result = await togglePlayerFullscreen();
 					if (result === 'failed') {
 						console.warn('Unable to toggle fullscreen');
 					}
