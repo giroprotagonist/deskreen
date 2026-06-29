@@ -8,7 +8,7 @@ import setHostCaptureSessionActive from './setHostCaptureSessionActive';
 import syncHostCastAudioOutput from './syncHostCastAudioOutput';
 import simplePeerHandleSdpTransform from './simplePeerHandleSdpTransform';
 
-const MAX_CAPTURE_RECOVERY_ATTEMPTS = 4;
+const MAX_CAPTURE_RECOVERY_ATTEMPTS = 8;
 
 export function attachCaptureTrackEndedHandler(
 	peerConnection: PeerConnection,

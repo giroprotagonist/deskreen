@@ -1,9 +1,18 @@
 import { ErrorMessage } from '../../components/ErrorDialog/ErrorMessageEnum';
 import {
+	DEFAULT_SOCKET_DISCONNECT_GRACE_MS,
+	RECEIVER_SOCKET_DISCONNECT_GRACE_MS,
+} from '../../constants/castReliabilityConstants';
+import {
 	getBrowserFromUAParser,
 	getDeviceTypeFromUAParser,
 	getOSFromUAParser,
 } from '../../utils/userAgentParserHelpers';
+import isPrivateLanIp from '../../utils/isPrivateLanIp';
+import {
+	isCastStreamHealthy,
+	shouldUseReceiverRelaxedDisconnect,
+} from '../../utils/receiverStreamHealth';
 import PeerConnectionSocketNotDefined from './errors/PeerConnectionSocketNotDefined';
 import setAndShowErrorDialogMessage from './setAndShowErrorDialogMessage';
 
@@ -49,6 +58,13 @@ export default (peerConnection: PeerConnection) => {
 		// Brief socket reconnects are common; do not white-screen the viewer instantly.
 		if (peerConnection.isStreamStarted) {
 			if (!streamDisconnectGraceTimeout) {
+				const onLan = isPrivateLanIp(peerConnection.myDeviceDetails.myIP);
+				const relaxed =
+					shouldUseReceiverRelaxedDisconnect() || onLan;
+				const graceMs = relaxed
+					? RECEIVER_SOCKET_DISCONNECT_GRACE_MS
+					: DEFAULT_SOCKET_DISCONNECT_GRACE_MS;
+
 				streamDisconnectGraceTimeout = setTimeout(() => {
 					streamDisconnectGraceTimeout = null;
 					if (!peerConnection.isStreamStarted) {
@@ -57,12 +73,15 @@ export default (peerConnection: PeerConnection) => {
 					if (peerConnection.socket?.connected) {
 						return;
 					}
+					if (isCastStreamHealthy() && relaxed) {
+						return;
+					}
 					peerConnection.stopStream();
 					setAndShowErrorDialogMessage(
 						peerConnection,
 						ErrorMessage.DISCONNECTED,
 					);
-				}, 8000);
+				}, graceMs);
 			}
 			return;
 		}

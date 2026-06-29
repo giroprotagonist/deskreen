@@ -15,6 +15,7 @@ import {
 	getReceiverMonoOutputPreference,
 	setReceiverMonoOutputPreference,
 } from '../../utils/receiverMonoOutputPreference';
+import { ReceiverStreamHealthMonitor } from '../../utils/receiverStreamHealth';
 
 interface PlayerViewProps {
 	isWithControls: boolean;
@@ -56,6 +57,10 @@ function PlayerView(props: PlayerViewProps) {
 	const monoAudioControllerRef = useRef<ReceiverMonoAudioController | null>(
 		null,
 	);
+	const streamHealthMonitorRef = useRef<ReceiverStreamHealthMonitor | null>(
+		null,
+	);
+	const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 	const toasterRef = useRef<Awaited<ReturnType<typeof OverlayToaster.create>> | null>(null);
 	const mobileLike =
 		isReceiverMode() || isMobilePlaybackDevice();
@@ -92,8 +97,72 @@ function PlayerView(props: PlayerViewProps) {
 		return () => {
 			monoAudioControllerRef.current?.release();
 			monoAudioControllerRef.current = null;
+			streamHealthMonitorRef.current?.detach();
+			streamHealthMonitorRef.current = null;
 		};
 	}, []);
+
+	useEffect(() => {
+		if (!receiverMode || !streamUrl || !isWithControls) {
+			streamHealthMonitorRef.current?.detach();
+			streamHealthMonitorRef.current = null;
+			return;
+		}
+
+		if (!videoRef.current) {
+			return;
+		}
+
+		if (!streamHealthMonitorRef.current) {
+			streamHealthMonitorRef.current = new ReceiverStreamHealthMonitor();
+		}
+		streamHealthMonitorRef.current.attach(videoRef.current, {
+			onFrozen: () => {
+				videoRef.current?.play().catch(() => {
+					// ignore autoplay policy errors
+				});
+			},
+		});
+	}, [receiverMode, streamUrl, isWithControls]);
+
+	useEffect(() => {
+		if (!receiverMode || !streamUrl) {
+			void wakeLockRef.current?.release();
+			wakeLockRef.current = null;
+			return;
+		}
+
+		const requestWakeLock = async () => {
+			if (!('wakeLock' in navigator)) {
+				return;
+			}
+			try {
+				wakeLockRef.current = await navigator.wakeLock.request('screen');
+			} catch {
+				// unsupported or denied
+			}
+		};
+
+		void requestWakeLock();
+
+		const handleVisibilityChange = () => {
+			if (document.visibilityState === 'visible') {
+				void requestWakeLock();
+				if (videoRef.current?.paused) {
+					videoRef.current.play().catch(() => {
+						// ignore
+					});
+				}
+			}
+		};
+
+		document.addEventListener('visibilitychange', handleVisibilityChange);
+		return () => {
+			document.removeEventListener('visibilitychange', handleVisibilityChange);
+			void wakeLockRef.current?.release();
+			wakeLockRef.current = null;
+		};
+	}, [receiverMode, streamUrl]);
 
 	const handleMonoOutputToggle = useCallback(async (enabled: boolean) => {
 		setIsMonoOutputEnabled(enabled);

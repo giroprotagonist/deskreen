@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.PowerManager
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
@@ -47,6 +48,8 @@ class MainActivity : AppCompatActivity() {
 	private var customView: View? = null
 	private var customViewCallback: WebChromeClient.CustomViewCallback? = null
 
+	private var castWakeLock: PowerManager.WakeLock? = null
+
 	private var isConnected = false
 	private var discoveryJob: Job? = null
 	private var lastLoadedUrl: String = ""
@@ -74,6 +77,7 @@ class MainActivity : AppCompatActivity() {
 		setContentView(R.layout.activity_main)
 
 		window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+		acquireCastWakeLock()
 		enterImmersiveMode()
 
 		webView = findViewById(R.id.webView)
@@ -152,6 +156,7 @@ class MainActivity : AppCompatActivity() {
 
 	@SuppressLint("SetJavaScriptEnabled")
 	private fun configureWebView() {
+		webView.setLayerType(View.LAYER_TYPE_HARDWARE, null)
 		webView.settings.apply {
 			javaScriptEnabled = true
 			domStorageEnabled = true
@@ -332,6 +337,32 @@ class MainActivity : AppCompatActivity() {
 			systemBarsBehavior =
 				WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 		}
+	}
+
+	@SuppressLint("WakelockTimeout")
+	private fun acquireCastWakeLock() {
+		val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+		castWakeLock?.release()
+		castWakeLock = powerManager.newWakeLock(
+			PowerManager.SCREEN_BRIGHT_WAKE_LOCK or PowerManager.ACQUIRE_CAUSES_WAKEUP,
+			"DeskreenReceiver::Cast",
+		).apply {
+			acquire(10 * 60 * 60 * 1000L)
+		}
+	}
+
+	private fun releaseCastWakeLock() {
+		castWakeLock?.let {
+			if (it.isHeld) {
+				it.release()
+			}
+		}
+		castWakeLock = null
+	}
+
+	override fun onDestroy() {
+		releaseCastWakeLock()
+		super.onDestroy()
 	}
 
 	override fun onNewIntent(intent: Intent) {

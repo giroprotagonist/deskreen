@@ -4,6 +4,10 @@ import {
 } from './simplePeerDataMessages';
 import { VideoQuality } from '../VideoAutoQualityOptimizer/VideoQualityEnum';
 import { ErrorMessage } from '../../components/ErrorDialog/ErrorMessageEnum';
+import {
+	DEFAULT_TRACK_ENDED_GRACE_MS,
+	RECEIVER_TRACK_ENDED_GRACE_MS,
+} from '../../constants/castReliabilityConstants';
 import PeerConnectionPeerIsNullError from './errors/PeerConnectionPeerIsNullError';
 import { ScreenSharingSource } from './ScreenSharingSourceEnum';
 import isReceiverMode, {
@@ -26,35 +30,62 @@ export default (peerConnection: PeerConnection) => {
 		peerConnection.setUrlCallback(stream);
 
 		let remoteTrackEndedTimeout: ReturnType<typeof setTimeout> | null = null;
+		const trackEndedGraceMs = isReceiverMode()
+			? RECEIVER_TRACK_ENDED_GRACE_MS
+			: DEFAULT_TRACK_ENDED_GRACE_MS;
 
-		const bindRemoteVideoTrackEndedHandler = (track: MediaStreamTrack) => {
+		const clearRemoteTrackEndedTimeout = () => {
+			if (remoteTrackEndedTimeout) {
+				clearTimeout(remoteTrackEndedTimeout);
+				remoteTrackEndedTimeout = null;
+			}
+		};
+
+		const scheduleRemoteTrackEndedDisconnect = () => {
+			clearRemoteTrackEndedTimeout();
+			remoteTrackEndedTimeout = setTimeout(() => {
+				remoteTrackEndedTimeout = null;
+				if (!peerConnection.isStreamStarted) {
+					return;
+				}
+				const currentTrack = stream.getVideoTracks()[0];
+				if (currentTrack && currentTrack.readyState === 'live') {
+					return;
+				}
+				peerConnection.stopStream();
+				peerConnection.UIHandler.setIsErrorDialogOpen(true);
+				peerConnection.UIHandler.errorDialogMessage =
+					ErrorMessage.DISCONNECTED;
+			}, trackEndedGraceMs);
+		};
+
+		const bindRemoteVideoTrackHandlers = (track: MediaStreamTrack) => {
 			track.onended = () => {
 				console.error('remote video track ended');
-				if (remoteTrackEndedTimeout) {
-					clearTimeout(remoteTrackEndedTimeout);
-				}
-				// Mac capture may recover via replaceTrack; avoid instant white screen.
-				remoteTrackEndedTimeout = setTimeout(() => {
-					remoteTrackEndedTimeout = null;
-					if (!peerConnection.isStreamStarted) {
-						return;
-					}
-					const currentTrack = stream.getVideoTracks()[0];
-					if (currentTrack && currentTrack.readyState === 'live') {
-						return;
-					}
-					peerConnection.stopStream();
-					peerConnection.UIHandler.setIsErrorDialogOpen(true);
-					peerConnection.UIHandler.errorDialogMessage =
-						ErrorMessage.DISCONNECTED;
-				}, 8000);
+				scheduleRemoteTrackEndedDisconnect();
+			};
+
+			track.onunmute = () => {
+				clearRemoteTrackEndedTimeout();
+			};
+
+			track.onmute = () => {
+				// Host may briefly mute during capture recovery; wait before disconnecting.
+				scheduleRemoteTrackEndedDisconnect();
 			};
 		};
 
 		const videoTrack = stream.getVideoTracks()[0];
 		if (videoTrack) {
-			bindRemoteVideoTrackEndedHandler(videoTrack);
+			bindRemoteVideoTrackHandlers(videoTrack);
 		}
+
+		stream.onaddtrack = (event) => {
+			if (event.track.kind === 'video') {
+				clearRemoteTrackEndedTimeout();
+				bindRemoteVideoTrackHandlers(event.track);
+			}
+		};
 
 		// Canvas pixel-readback every second crashes Android WebView renderers.
 		const skipAutoQualityOptimizer =

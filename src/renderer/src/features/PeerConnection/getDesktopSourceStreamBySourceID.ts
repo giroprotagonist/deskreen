@@ -7,8 +7,8 @@ export default async function getDesktopSourceStreamBySourceID(
 	_height: number | null | undefined = undefined,
 	_minSizeMultiplier = 1,
 	_maxSizeMultiplier = 1,
-	minFrameRate = 15,
-	maxFrameRate = 60,
+	minFrameRate = 24,
+	maxFrameRate = 30,
 	includeSystemAudio = true,
 ): Promise<MediaStream> {
 	const trimmedSourceId = sourceID.trim();

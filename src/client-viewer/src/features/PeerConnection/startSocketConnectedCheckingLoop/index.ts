@@ -1,10 +1,24 @@
 import PeerConnection from '..';
 import { ErrorMessage } from '../../../components/ErrorDialog/ErrorMessageEnum';
+import {
+	DEFAULT_DISCONNECT_STREAK_THRESHOLD,
+	RECEIVER_DISCONNECT_STREAK_THRESHOLD,
+	SOCKET_HEALTH_CHECK_INTERVAL_MS,
+	SOCKET_PING_TIMEOUT_MS,
+} from '../../../constants/castReliabilityConstants';
+import {
+	isCastStreamHealthy,
+	shouldUseReceiverRelaxedDisconnect,
+} from '../../../utils/receiverStreamHealth';
 import setAndShowErrorDialogMessage from '../setAndShowErrorDialogMessage';
 
 export default (peerConnection: PeerConnection): NodeJS.Timeout => {
 	let disconnectedStreak = 0;
 	let pingTimeout: NodeJS.Timeout | null = null;
+	const relaxedDisconnect = shouldUseReceiverRelaxedDisconnect();
+	const streakThreshold = relaxedDisconnect
+		? RECEIVER_DISCONNECT_STREAK_THRESHOLD
+		: DEFAULT_DISCONNECT_STREAK_THRESHOLD;
 
 	const checkConnection = () => {
 		const socket = peerConnection.socket;
@@ -16,17 +30,15 @@ export default (peerConnection: PeerConnection): NodeJS.Timeout => {
 		const isSocketConnected = !!socket.connected;
 
 		if (isSocketConnected) {
-			// perform explicit ping/pong check to verify server is alive
 			try {
 				if (pingTimeout) {
 					clearTimeout(pingTimeout);
 				}
 
 				const timeout = setTimeout(() => {
-					// ping timeout - server didn't respond
 					disconnectedStreak++;
 					handleDisconnection();
-				}, 3000);
+				}, SOCKET_PING_TIMEOUT_MS);
 
 				pingTimeout = timeout;
 
@@ -44,28 +56,38 @@ export default (peerConnection: PeerConnection): NodeJS.Timeout => {
 					}
 				});
 			} catch {
-				// socket error during ping
 				disconnectedStreak++;
 				handleDisconnection();
 			}
 		} else {
-			// socket is not connected
 			disconnectedStreak++;
 			handleDisconnection();
 		}
 	};
 
 	const handleDisconnection = () => {
-		// show error and stop stream after sustained disconnection
-		if (disconnectedStreak >= 3) {
-			// stop the video stream
-			if (peerConnection.isStreamStarted) {
-				peerConnection.stopStream();
-			}
-			// show error dialog (now allows showing even when stream was started)
-			setAndShowErrorDialogMessage(peerConnection, ErrorMessage.DISCONNECTED);
+		if (disconnectedStreak < streakThreshold) {
+			return;
 		}
+
+		// WebRTC can keep delivering frames while signaling socket is briefly down.
+		if (
+			peerConnection.isStreamStarted &&
+			isCastStreamHealthy() &&
+			relaxedDisconnect
+		) {
+			disconnectedStreak = Math.max(
+				0,
+				streakThreshold - 2,
+			);
+			return;
+		}
+
+		if (peerConnection.isStreamStarted) {
+			peerConnection.stopStream();
+		}
+		setAndShowErrorDialogMessage(peerConnection, ErrorMessage.DISCONNECTED);
 	};
 
-	return setInterval(checkConnection, 5000);
+	return setInterval(checkConnection, SOCKET_HEALTH_CHECK_INTERVAL_MS);
 };
