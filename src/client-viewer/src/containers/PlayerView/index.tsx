@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { OverlayToaster, Position } from '@blueprintjs/core';
 import { useTranslation } from 'react-i18next';
 import VideoJSPlayer from '../../components/VideoJSPlayer';
@@ -10,6 +10,11 @@ import {
 import { type VideoQualityType } from '../../features/VideoAutoQualityOptimizer/VideoQualityEnum';
 import { togglePlayerFullscreen } from '../../utils/playerFullscreen';
 import isReceiverMode, { isMobilePlaybackDevice } from '../../utils/isReceiverMode';
+import { ReceiverMonoAudioController } from '../../utils/receiverMonoAudio';
+import {
+	getReceiverMonoOutputPreference,
+	setReceiverMonoOutputPreference,
+} from '../../utils/receiverMonoOutputPreference';
 
 interface PlayerViewProps {
 	isWithControls: boolean;
@@ -48,9 +53,53 @@ function PlayerView(props: PlayerViewProps) {
 
 	const videoRef = useRef<HTMLVideoElement>(null);
 	const audioUnlockedRef = useRef(false);
+	const monoAudioControllerRef = useRef<ReceiverMonoAudioController | null>(
+		null,
+	);
 	const toasterRef = useRef<Awaited<ReturnType<typeof OverlayToaster.create>> | null>(null);
 	const mobileLike =
 		isReceiverMode() || isMobilePlaybackDevice();
+	const receiverMode = isReceiverMode();
+	const hasStreamAudio = Boolean(streamUrl?.getAudioTracks().length);
+	const showMonoOutputToggle = receiverMode && hasStreamAudio;
+	const [isMonoOutputEnabled, setIsMonoOutputEnabled] = useState(
+		() => getReceiverMonoOutputPreference(),
+	);
+
+	useEffect(() => {
+		if (!monoAudioControllerRef.current) {
+			monoAudioControllerRef.current = new ReceiverMonoAudioController();
+		}
+		const controller = monoAudioControllerRef.current;
+
+		if (!isWithControls) {
+			controller.release();
+			return;
+		}
+
+		if (!videoRef.current) {
+			return;
+		}
+
+		if (showMonoOutputToggle) {
+			controller.attach(videoRef.current, isMonoOutputEnabled);
+		} else {
+			controller.attach(videoRef.current, false);
+		}
+	}, [showMonoOutputToggle, isWithControls, streamUrl, isMonoOutputEnabled]);
+
+	useEffect(() => {
+		return () => {
+			monoAudioControllerRef.current?.release();
+			monoAudioControllerRef.current = null;
+		};
+	}, []);
+
+	const handleMonoOutputToggle = useCallback(async (enabled: boolean) => {
+		setIsMonoOutputEnabled(enabled);
+		setReceiverMonoOutputPreference(enabled);
+		await monoAudioControllerRef.current?.setMonoEnabled(enabled);
+	}, []);
 
 	useEffect(() => {
 		if (!streamUrl) return;
@@ -129,6 +178,9 @@ function PlayerView(props: PlayerViewProps) {
 		if (mobileLike && nextPlaying) {
 			audioUnlockedRef.current = true;
 		}
+		if (nextPlaying && isMonoOutputEnabled) {
+			void monoAudioControllerRef.current?.setMonoEnabled(true);
+		}
 		handlePlayPause();
 		
 		// show notification after a small delay to ensure state is updated
@@ -141,7 +193,7 @@ function PlayerView(props: PlayerViewProps) {
 				});
 			}
 		}, 50);
-	}, [handlePlayPause, isPlaying, mobileLike, t]);
+	}, [handlePlayPause, isPlaying, isMonoOutputEnabled, mobileLike, t]);
 
 	// handle iPhone fullscreen exit - detect when video stops and auto-resume
 	useEffect(() => {
@@ -243,6 +295,9 @@ function PlayerView(props: PlayerViewProps) {
 			<PlayerControlPanel
 				onSwitchChangedCallback={(isEnabled) => setIsWithControls(isEnabled)}
 				isDefaultPlayerTurnedOn={isWithControls}
+				showMonoOutputToggle={showMonoOutputToggle}
+				isMonoOutputEnabled={isMonoOutputEnabled}
+				onMonoOutputToggle={handleMonoOutputToggle}
 				handleClickFullscreen={async () => {
 					const result = await togglePlayerFullscreen();
 					if (result === 'failed') {

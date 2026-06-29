@@ -52,6 +52,9 @@ interface PlayerControlPanelProps {
 	setVideoQuality: (q: VideoQualityType) => void;
 	selectedVideoQuality: VideoQualityType;
 	screenSharingSourceType: ScreenSharingSourceType;
+	showMonoOutputToggle?: boolean;
+	isMonoOutputEnabled?: boolean;
+	onMonoOutputToggle?: (enabled: boolean) => void;
 	// toaster: undefined | HTMLDivElement;
 }
 
@@ -66,6 +69,9 @@ function PlayerControlPanel(props: PlayerControlPanelProps) {
 		selectedVideoQuality,
 		setVideoQuality,
 		screenSharingSourceType,
+		showMonoOutputToggle = false,
+		isMonoOutputEnabled = false,
+		onMonoOutputToggle,
 	} = props;
 
 	const isFullScreenAPIAvailable = screenfull.isEnabled;
@@ -158,6 +164,11 @@ function PlayerControlPanel(props: PlayerControlPanelProps) {
 		updateAnalyticsConsent('opted-out');
 		setIsPrivacyDialogOpen(false);
 	}, []);
+
+	const handleMonoOutputToggle = useCallback(() => {
+		if (!onMonoOutputToggle) return;
+		onMonoOutputToggle(!isMonoOutputEnabled);
+	}, [isMonoOutputEnabled, onMonoOutputToggle]);
 
 	return (
 		<>
@@ -313,6 +324,19 @@ function PlayerControlPanel(props: PlayerControlPanelProps) {
 					<Col xs={12} md={3}>
 						<Row end="xs">
 							<Col xs={12}>
+								{showMonoOutputToggle && (
+									<Switch
+										onChange={handleMonoOutputToggle}
+										innerLabel={isMonoOutputEnabled ? t('ON') : t('OFF')}
+										inline
+										label={t('Mono PA output')}
+										alignIndicator={Alignment.RIGHT}
+										checked={isMonoOutputEnabled}
+										style={{
+											marginBottom: '12px',
+										}}
+									/>
+								)}
 								<Switch
 									onChange={handleDefaultPlayerToggle}
 									innerLabel={isDefaultPlayerTurnedOn ? t('ON') : t('OFF')}
